@@ -1,6 +1,6 @@
 // ui.js — owns the left-rail DOM: depth controls, the scan legend, the readout
 // (with the colour↔baseline bridge), the guided intro, and the tour caption.
-import { GEO_LAYERS, EARTH_RADIUS, DEPTH_STOPS, sliderToDepth, depthToSlider } from './earthModel.js';
+import { GEO_LAYERS, EARTH_RADIUS, DEPTH_STOPS, sliderToDepth, depthToSlider, reliefSliderToDepth, reliefDepthToSlider } from './earthModel.js';
 import { TYPE_INFO, CATEGORY } from './tomography.js';
 
 const $ = (s)=>document.querySelector(s);
@@ -14,7 +14,8 @@ const JUMPS = [
 
 export function initControls(h){
   const slider=$('#depth-slider'); // 0..1000 on a non-linear axis (shallow expanded)
-  slider.addEventListener('input', ()=>h.onDepth(sliderToDepth(+slider.value/1000)));
+  let reliefAxis=false;            // peel mode: the upper band of the slider is elevation above sea level
+  slider.addEventListener('input', ()=>h.onDepth((reliefAxis?reliefSliderToDepth:sliderToDepth)(+slider.value/1000)));
 
   document.querySelectorAll('#colormode button').forEach(b=>
     b.addEventListener('click', ()=>h.onColorMode(b.dataset.mode)));
@@ -27,7 +28,7 @@ export function initControls(h){
   tog('#t-struct','struct'); tog('#t-scan','scan'); tog('#t-infer','infer'); tog('#t-theory','theory');
   tog('#t-relief','relief'); tog('#t-coast','coast'); tog('#t-borders','borders');
   tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-exp','exp'); tog('#t-spin','spin'); tog('#t-drill','drill');
-  tog('#t-cut','cutaway'); tog('#t-normalize','normalize');
+  tog('#t-cut','cutaway'); tog('#t-normalize','normalize'); tog('#t-peel','peel');
 
   // data pipeline — model inputs, clustering, viz strategy
   $('#t-all-s').addEventListener('change',e=>h.onModelKind&&h.onModelKind('S',e.target.checked));
@@ -100,9 +101,10 @@ export function initControls(h){
       const r=Math.round(d).toLocaleString();
       $('#depth-km').textContent=r; $('#sd-km').textContent=r;
       $('#depth-layer').textContent=layerName; $('#sd-layer').textContent=layerName;
-      const sv=Math.round(depthToSlider(d)*1000);
+      const frac=(reliefAxis?reliefDepthToSlider:depthToSlider)(d);
+      const sv=Math.round(frac*1000);
       if(+slider.value!==sv) slider.value=sv;
-      cursor.style.left=(depthToSlider(d)*100)+'%';
+      cursor.style.left=(frac*100)+'%';
       ticks.querySelectorAll('.tick').forEach(t=>t.classList.toggle('on',Math.abs(+t.dataset.d-d)<70));
       const stop=DEPTH_STOPS.reduce((a,b)=>Math.abs(b.d-d)<Math.abs(a.d-d)?b:a);
       $('#depth-note').textContent='“'+stop.label+'” — '+stop.blurb;
@@ -112,6 +114,7 @@ export function initControls(h){
     sourceNote(t){ $('#scan-source-note').textContent=t; },
     drillStatus(t){ const e=$('#drill-status'); if(e){ e.textContent=t||''; e.classList.toggle('on', !!t); } },
     bandReadout(t){ const e=$('#band-readout'); if(e){ e.textContent=t||''; e.classList.toggle('on', !!t); } },
+    reliefAxis(on){ reliefAxis=!!on; },
     setModels(arr){
       const el=$('#model-list'); if(!el) return;
       const groups=[['S','Shear (S)'],['P','P-wave (P)']];

@@ -88,12 +88,20 @@ const SURF_FRAG=`
 
 // ---- wireframe shader: faint skeleton, still band-lit & clippable ---------------
 const WIRE_FRAG=`
-  uniform vec3 uColor; uniform float uOpacity; uniform float uClip,uCurDepth;
+  uniform vec3 uColor; uniform float uOpacity; uniform float uClip,uCurDepth,uBand;
   varying float vProx; varying float vAD; varying vec3 vN; varying vec3 vView;
   void main(){
     ${CLIP_FRAG}
-    float a = uOpacity*(0.10+0.45*vProx);
-    gl_FragColor = vec4(uColor*(0.55+0.45*vProx), a);
+    // brightness decays EXPONENTIALLY downward from the current depth (not a binary band):
+    // brightest at the cut depth, fading deeper with a scale tied to the band width;
+    // lines shallower than the current depth fade out quickly.
+    float below = vAD - uCurDepth;                       // >0 = deeper than current depth
+    float decay = exp(-max(below,0.0)/max(uBand*1.6,1e-4));
+    float up    = smoothstep(-uBand*0.5, 0.0, below);    // hide what's above the current depth
+    float w = decay*up;
+    float a = uOpacity*(0.05 + 0.6*w);
+    if(a<0.004) discard;
+    gl_FragColor = vec4(uColor*(0.4+0.6*w), a);
   }`;
 
 // ---- points shader: instanced blobs, opacity & size collapse off the band ------

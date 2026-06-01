@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import {
-  EARTH_RADIUS, premAt, geoLayerAt, depthToUnit, tempUncertainty,
+  EARTH_RADIUS, premAt, geoLayerAt, depthToUnit, tempUncertainty, reliefCutRadius, ELEV_TOP,
 } from './earthModel.js';
 import { makeScanField, activeFeatures, dominantFeatures, TYPE_INFO } from './tomography.js';
 import { loadGeo, rasterizeLand, buildCoastlines, buildGraticule, latLonToVec3 } from './geo.js';
@@ -61,7 +61,7 @@ const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
   showStruct:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
   showBorders:false, showMarkers:true, showFoot:false, showExp:false, spin:true,
-  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'synth', drillNav:false, cutaway:false,
+  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'synth', drillNav:false, cutaway:false, reliefPeel:false,
 };
 // drill-zoom navigation "tape": waypoints of {orbit target, camera position}
 let tape=[], navIdx=0, navCam=null, navTarget=null;
@@ -110,7 +110,9 @@ function applyFocus(t){
 // so driving the depth slider feels like peeling the crust off to reveal the inside.
 const smooth01=(x)=>{ x=x<0?0:x>1?1:x; return x*x*(3-2*x); };
 const peelFactor=(d)=> 1 - 0.86*smooth01((d-50)/520);   // 1 @50km → ~0.14 by ~570km
-function setReliefOpacity(){ relief&&relief.setOpacity(dials.reliefOpacity*peelFactor(state.depth)); }
+function setReliefOpacity(){ if(!relief) return;
+  // peel mode keeps the current surface STRONG (the cut, not opacity, hides what's above)
+  relief.setOpacity(state.reliefPeel ? 0.95 : dials.reliefOpacity*peelFactor(state.depth)); }
 
 // ---- data pipeline: combine enabled models -> scan slice + 3-D bodies ----------
 function toScanEns(c){                                    // engine float field -> scan's Int8/Uint8 shape
@@ -141,6 +143,15 @@ function syncClusterFromUI(){                             // adopt the sliders' 
     let v=r[0]+(r[1]-r[0])*(+s.value/100); if(s.dataset.clus==='smooth') v=Math.round(v);
     clusterParams[s.dataset.clus]=v; });
   reflectClusterReadouts();
+}
+function applyPeel(){                                     // in peel mode the relief is the subject; interior steps back
+  const on=state.reliefPeel;
+  if(scan) scan.mesh.visible      = on ? false : state.showScan;
+  if(structures) structures.group.visible = on ? false : (state.source==='real' ? false : state.showStruct);
+  if(dataBodies) dataBodies.group.visible  = on ? false : (state.source==='real');
+  if(coastObj) coastObj.visible   = on ? false : state.showCoast;   // coastlines just clutter the 3-D relief
+  if(gratObj)  gratObj.visible    = on ? false : state.showCoast;
+  // (markers/borders stay; theory is suppressed in the render loop while peeling)
 }
 function applyCutaway(){                                  // drop everything shallower than the current depth
   const on=state.cutaway;
@@ -181,7 +192,7 @@ async function init(){
 
   relief=makeReliefEarth();
   relief.setOpacity(dials.reliefOpacity); relief.setBright(dials.reliefBright); relief.mesh.visible=state.showRelief;
-  scanScene.add(relief.mesh);
+  scanScene.add(relief.mesh); scanScene.add(relief.water);
 
   // faint globe outline shown only while a feature is "extracted", for context
   earthWire=new THREE.LineSegments(
@@ -257,6 +268,11 @@ const handlers={
       ui.drillStatus(v?'drill ▾ scroll in to dive · out to rewind':''); }
     else if(name==='cutaway'){ state.cutaway=v; applyCutaway(); }
     else if(name==='normalize'){ engine&&engine.setNormalize(v); scheduleRefresh(); }
+    else if(name==='peel'){ state.reliefPeel=v; ui.reliefAxis(v); relief&&relief.setPeel(v);
+      if(v){ state.showRelief=true; relief.mesh.visible=true; const cb=document.querySelector('#t-relief'); if(cb) cb.checked=true; }
+      applyPeel();                                        // surface takes over; interior clutter steps back
+      if(v) setDepth(-ELEV_TOP*0.55); else setDepth(Math.max(0,state.depth)); // start partway above the peaks
+      setReliefOpacity(); }
   },
   onModelToggle:(name,on)=>{ engine&&engine.setEnabled(name,on); scheduleRefresh(); },
   onModelKind:(kind,on)=>{ engine&&engine.enableKind(kind,on); engine&&ui.setModels(engine.list()); scheduleRefresh(); },
@@ -281,27 +297,36 @@ const handlers={
 // ---------- depth ----------
 let pendingDepth=0, builtDepth=-999, lastBuild=0, lastReadout={};
 function setDepth(d){
-  d=Math.max(0,Math.min(EARTH_RADIUS,d));
+  const floor = state.reliefPeel ? -ELEV_TOP : 0;          // peel lets the cut rise above sea level
+  d=Math.max(floor,Math.min(EARTH_RADIUS,d));
   state.depth=d; pendingDepth=d;
-  scan.setRadius(depthToUnit(d));
-  structures.setCurDepth(d/EARTH_RADIUS);
-  if(dataBodies) dataBodies.setCurDepth(d/EARTH_RADIUS);
-  setReliefOpacity();   // peel the surface back with depth
-  // sample a hair below so velocities agree with the (deeper) layer label at a discontinuity
-  const gl=geoLayerAt(d), p=premAt(Math.min(d+0.5, EARTH_RADIUS));
-  ui.depth(d, gl.name+(gl.state==='liquid'?' · liquid':''));
-  lastReadout={
-    vs:(gl.state==='liquid'?'0 (liquid)':p.vs.toFixed(2)+' km/s'),
-    temp:'≈ '+(Math.round(p.temp/10)*10).toLocaleString()+' K · '+(Math.round((p.temp-273.15)/10)*10).toLocaleString()+' °C',
-    tempNote:'model estimate · ±'+tempUncertainty(d)+' K · not measured',
-    rho:p.rho.toFixed(2)+' g/cm³',
-    p:(p.pressure>=10?p.pressure.toFixed(0):p.pressure.toFixed(1))+' GPa',
-    covPct:scanField.coverageMean*100,
-  };
-  ui.readout(lastReadout);
-  ui.know(gl.note);
+  const dd=Math.max(0,d);                                  // physical sampling never goes above sea level
+  scan.setRadius(depthToUnit(dd));
+  structures.setCurDepth(dd/EARTH_RADIUS);
+  if(dataBodies) dataBodies.setCurDepth(dd/EARTH_RADIUS);
+  if(state.reliefPeel && relief) relief.setCut(reliefCutRadius(d));   // slice the relief at this elevation/depth
+  setReliefOpacity();
+  if(d<0){                                                 // above sea level: report elevation, not interior
+    ui.depth(d, '+'+(-d).toFixed(1)+' km · above sea level');
+    lastReadout={ vs:'—', temp:'— (atmosphere)', tempNote:'above the solid Earth', rho:'—', p:'—', covPct:scanField.coverageMean*100 };
+    ui.readout(lastReadout); ui.know('Cutting down through the topography. Land elevation is measured; the ocean floor below sea level is not in this dataset (shown faint = estimated).');
+  } else {
+    // sample a hair below so velocities agree with the (deeper) layer label at a discontinuity
+    const gl=geoLayerAt(dd), p=premAt(Math.min(dd+0.5, EARTH_RADIUS));
+    ui.depth(d, gl.name+(gl.state==='liquid'?' · liquid':''));
+    lastReadout={
+      vs:(gl.state==='liquid'?'0 (liquid)':p.vs.toFixed(2)+' km/s'),
+      temp:'≈ '+(Math.round(p.temp/10)*10).toLocaleString()+' K · '+(Math.round((p.temp-273.15)/10)*10).toLocaleString()+' °C',
+      tempNote:'model estimate · ±'+tempUncertainty(dd)+' K · not measured',
+      rho:p.rho.toFixed(2)+' g/cm³',
+      p:(p.pressure>=10?p.pressure.toFixed(0):p.pressure.toFixed(1))+' GPa',
+      covPct:scanField.coverageMean*100,
+    };
+    ui.readout(lastReadout);
+    ui.know(gl.note);
+  }
   refreshFeaturePanel();
-  positionMarkers(d);
+  positionMarkers(dd);
 }
 function refreshFeaturePanel(){ ui.features(dominantFeatures(state.depth, 7)); }
 
@@ -552,7 +577,7 @@ function animate(){
   // Where coverage collapses (the deep core), the blurry estimate brightens to take over.
   const fillIn=1-THREE.MathUtils.smoothstep(scanField?scanField.coverageMean:0.4, 0.05, 0.30);
   pipeline.render(theoryScene, scanScene, camera, {
-    showTheory:state.showTheory, showScan:true,
+    showTheory:state.showTheory && !state.reliefPeel, showScan:true,
     blur:dials.modelHaze,
     theoryIntensity:((state.showScan ? 0.32+fillIn*0.5 : 0.74)+dials.modelHaze*0.12)*dials.modelGain,
   });

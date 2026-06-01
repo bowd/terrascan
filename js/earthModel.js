@@ -129,6 +129,25 @@ const DEXP = 2.2;
 export const sliderToDepth = (t)=> EARTH_RADIUS*Math.pow(Math.max(0,Math.min(1,t)), DEXP);
 export const depthToSlider = (d)=> Math.pow(Math.max(0,Math.min(1,d/EARTH_RADIUS)), 1/DEXP);
 
+// ---- relief / elevation axis (peel mode) ----
+// Topography is exaggerated so it reads as real 3-D structure; the cut radius lives
+// in that same exaggerated space so the peel cleanly slices through the mountains.
+export const RELIEF_EXAG    = 72;    // vertical exaggeration for display
+export const RELIEF_MAXELEV = 9.3;   // km mapped to a full (white) topo sample (~Everest)
+export const ELEV_TOP       = 10;    // km above sea level the peel axis starts (above all peaks)
+const ELEV_FRAC = 0.16;              // top 16% of the slider covers +ELEV_TOP -> sea level
+// peel-mode slider mapping: the upper band is elevation ABOVE sea level (negative depth)
+export const reliefSliderToDepth = (t)=>{ t=Math.max(0,Math.min(1,t));
+  if(t < ELEV_FRAC) return -ELEV_TOP*(1 - t/ELEV_FRAC);              // +ELEV_TOP .. 0 (sea level)
+  return sliderToDepth((t-ELEV_FRAC)/(1-ELEV_FRAC)); };             // 0 .. centre, below sea
+export const reliefDepthToSlider = (d)=> d<=0
+  ? ELEV_FRAC*(1 - Math.min(1,(-d)/ELEV_TOP))
+  : ELEV_FRAC + (1-ELEV_FRAC)*depthToSlider(d);
+// cut radius (scene units) for a given depth/elevation, in the exaggerated relief space
+export const reliefCutRadius = (d)=> d<=0
+  ? 1 + (-d)/EARTH_RADIUS*RELIEF_EXAG     // above sea: exaggerated elevation
+  : depthToUnit(d);                       // below sea: physical depth (continuous at d=0 -> 1.0)
+
 // rough temperature uncertainty (K) — temperature is modelled, never measured;
 // the error is largest in the thermal boundary layers (lithosphere, D″) and the core.
 export function tempUncertainty(d){

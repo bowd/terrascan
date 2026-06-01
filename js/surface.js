@@ -1,55 +1,117 @@
-// surface.js — a translucent relief Earth skin: real blue-marble colour +
-// hill-shaded topography (from the elevation map), aligned to the same lat/lon
-// convention as the coastlines/scan so continents sit where they should. Kept
-// see-through so the interior still reads underneath.
+// surface.js — the relief as a REAL 3-D structure: the sphere is displaced by land
+// topography (exaggerated) so mountains are actual geometry, not a painted skin. A
+// radial cut (uCutR) lets the "Relief peel" slice down through the peaks; a separate
+// translucent water shell fills the oceans at sea level. The elevation map is land-only
+// (no bathymetry), so land reads as MEASURED/known and the ocean floor as ESTIMATED.
 import * as THREE from 'three';
+import { EARTH_RADIUS, RELIEF_EXAG, RELIEF_MAXELEV } from './earthModel.js';
+
+const DISP = RELIEF_MAXELEV/EARTH_RADIUS*RELIEF_EXAG;   // unit displacement at a full (white) topo sample
+const SEA = 0.018;                                      // topo sample below this = ocean (no land)
+const NOCUT = 9.0;                                      // uCutR sentinel = nothing clipped
 
 export function makeReliefEarth(){
   const loader=new THREE.TextureLoader();
-  // flipY=false so v=0 is the NORTH row, matching the hand-built scan DataTexture
-  // (and therefore the coastlines/borders). Image textures default to flipY=true,
-  // which would mirror the relief north<->south against the outlines.
+  // flipY=false so v=0 is the NORTH row, matching the scan DataTexture / coastlines.
   const colorTex=loader.load('./assets/earth-blue-marble.jpg');
   colorTex.colorSpace=THREE.SRGBColorSpace; colorTex.wrapS=THREE.RepeatWrapping; colorTex.flipY=false;
   const topoTex=loader.load('./assets/earth-topology.png');
   topoTex.colorSpace=THREE.NoColorSpace; topoTex.wrapS=THREE.RepeatWrapping; topoTex.flipY=false;
 
-  const geo=new THREE.SphereGeometry(1.0, 160, 100);
+  // ---------- displaced relief shell ----------
+  const geo=new THREE.SphereGeometry(1.0, 384, 192);
   const mat=new THREE.ShaderMaterial({
-    transparent:true, depthTest:false, depthWrite:false, side:THREE.FrontSide,
-    uniforms:{ uColor:{value:colorTex}, uTopo:{value:topoTex}, uOpacity:{value:0.6}, uBright:{value:1.12} },
+    transparent:true, depthTest:false, depthWrite:false, side:THREE.DoubleSide,
+    uniforms:{ uColor:{value:colorTex}, uTopo:{value:topoTex}, uOpacity:{value:0.6}, uBright:{value:1.12},
+      uDisp:{value:DISP}, uCutR:{value:NOCUT}, uPeel:{value:0} },
     vertexShader:`
-      varying vec3 vP; varying vec3 vN; varying vec3 vV;
+      precision highp float;
+      uniform sampler2D uTopo; uniform float uDisp;
+      varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying float vH; varying float vR;
+      const float PI=3.141592653589793;
       void main(){
-        vec4 mv=modelViewMatrix*vec4(position,1.0);
+        vec3 dir=normalize(position);
+        float lat=asin(clamp(dir.y,-1.0,1.0)), lon=atan(dir.z,-dir.x);
+        vUv=vec2(lon/(2.0*PI)+0.5, 0.5-lat/PI);
+        vH=texture2D(uTopo,vUv).r;
+        vR=1.0 + vH*uDisp;                 // exaggerated radius (sea level = 1.0)
+        vec3 p=dir*vR;
+        vec4 mv=modelViewMatrix*vec4(p,1.0);
         vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz);
-        vP=normalize(position);
         gl_Position=projectionMatrix*mv;
       }`,
     fragmentShader:`
       precision highp float;
-      varying vec3 vP; varying vec3 vN; varying vec3 vV;
-      uniform sampler2D uColor, uTopo; uniform float uOpacity, uBright;
-      const float PI=3.141592653589793;
+      varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying float vH; varying float vR;
+      uniform sampler2D uColor, uTopo; uniform float uOpacity, uBright, uCutR, uPeel;
       void main(){
-        vec3 dir=normalize(vP);
-        float lat=asin(clamp(dir.y,-1.0,1.0)), lon=atan(dir.z,-dir.x);
-        vec2 uv=vec2(lon/(2.0*PI)+0.5, 0.5-lat/PI);
-        vec3 col=texture2D(uColor,uv).rgb;
+        if(vR > uCutR + 0.0006) discard;                 // peel: drop everything above the cut
+        bool land = vH > ${SEA.toFixed(3)};
+        vec3 col=texture2D(uColor,vUv).rgb;
         // hill-shade from the elevation gradient
         float e=0.0016;
-        float h =texture2D(uTopo,uv).r;
-        float hx=texture2D(uTopo,uv+vec2(e,0.0)).r;
-        float hy=texture2D(uTopo,uv+vec2(0.0,e)).r;
-        vec3 n=normalize(vec3((h-hx)*9.0,(h-hy)*9.0,1.0));
+        float hx=texture2D(uTopo,vUv+vec2(e,0.0)).r;
+        float hy=texture2D(uTopo,vUv+vec2(0.0,e)).r;
+        vec3 n=normalize(vec3((vH-hx)*9.0,(vH-hy)*9.0,1.0));
         float shade=clamp(dot(n,normalize(vec3(-0.55,0.6,0.85))),0.0,1.0);
         col=col*(0.62+0.7*shade)*uBright;
-        col+=vec3(0.05,0.09,0.16)*pow(1.0-clamp(dot(normalize(vN),normalize(vV)),0.0,1.0),3.0); // faint atmosphere rim
         float ndv=clamp(dot(normalize(vN),normalize(vV)),0.0,1.0);
-        gl_FragColor=vec4(col, uOpacity*(0.30+0.70*ndv)); // softer at grazing edges
+        col+=vec3(0.05,0.09,0.16)*pow(1.0-ndv,3.0);        // faint atmosphere rim
+        // honest encoding: land = measured (bright); ocean floor = no data -> estimated (dim, cool)
+        float estimated = land ? 0.0 : 1.0;
+        col = mix(col, mix(col,vec3(0.10,0.14,0.20),0.6), estimated);
+        // emphasise the freshly-cut surface: a bright band right at the cut radius
+        float cutBand = (uCutR<${NOCUT.toFixed(1)}) ? smoothstep(uCutR-0.006, uCutR, vR) : 0.0;
+        col += vec3(0.5,0.72,0.95)*cutBand*0.7;
+        // opacity: in peel mode the current surface is STRONG; land solid, ocean faint
+        float aLand = mix(0.62, 0.94, uPeel);
+        float aOcean= mix(0.50, 0.34, uPeel);
+        float a = (land?aLand:aOcean) * uOpacity * (0.34+0.66*ndv);
+        a = max(a, cutBand*0.9*uOpacity);
+        gl_FragColor=vec4(col, a);
       }`,
   });
-  const mesh=new THREE.Mesh(geo,mat);
-  mesh.renderOrder=1;
-  return { mesh, setOpacity:(o)=>mat.uniforms.uOpacity.value=o, setBright:(b)=>mat.uniforms.uBright.value=b };
+  const mesh=new THREE.Mesh(geo,mat); mesh.renderOrder=1;
+
+  // ---------- translucent ocean shell at sea level ----------
+  const wgeo=new THREE.SphereGeometry(1.0, 256, 128);
+  const wmat=new THREE.ShaderMaterial({
+    transparent:true, depthTest:false, depthWrite:false, side:THREE.DoubleSide,
+    uniforms:{ uTopo:{value:topoTex}, uCutR:{value:NOCUT}, uOpacity:{value:0.0} },
+    vertexShader:`
+      precision highp float;
+      uniform sampler2D uTopo;
+      varying vec3 vN; varying vec3 vV; varying float vH;
+      const float PI=3.141592653589793;
+      void main(){
+        vec3 dir=normalize(position);
+        float lat=asin(clamp(dir.y,-1.0,1.0)), lon=atan(dir.z,-dir.x);
+        vH=texture2D(uTopo,vec2(lon/(2.0*PI)+0.5,0.5-lat/PI)).r;
+        vec4 mv=modelViewMatrix*vec4(position,1.0);   // sea level: r = 1.0
+        vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz);
+        gl_Position=projectionMatrix*mv;
+      }`,
+    fragmentShader:`
+      precision highp float;
+      varying vec3 vN; varying vec3 vV; varying float vH;
+      uniform float uCutR, uOpacity;
+      void main(){
+        if(vH > ${SEA.toFixed(3)}) discard;             // oceans only
+        if(1.0 > uCutR + 0.0006) discard;               // below the cut: we're beneath the sea, hide it
+        float ndv=clamp(dot(normalize(vN),normalize(vV)),0.0,1.0);
+        vec3 deep=vec3(0.02,0.10,0.22), shallow=vec3(0.10,0.32,0.46);
+        vec3 col=mix(deep,shallow,ndv) + vec3(0.4,0.6,0.8)*pow(1.0-ndv,4.0)*0.5;
+        gl_FragColor=vec4(col, uOpacity*(0.45+0.55*ndv));
+      }`,
+  });
+  const water=new THREE.Mesh(wgeo,wmat); water.renderOrder=2; water.visible=false;
+
+  return {
+    mesh, water,
+    setOpacity:(o)=>mat.uniforms.uOpacity.value=o,
+    setBright:(b)=>mat.uniforms.uBright.value=b,
+    setCut:(r)=>{ mat.uniforms.uCutR.value=r; wmat.uniforms.uCutR.value=r; },
+    setPeel:(on)=>{ mat.uniforms.uPeel.value=on?1:0; water.visible=!!on; wmat.uniforms.uOpacity.value=on?0.55:0.0;
+      if(!on) mat.uniforms.uCutR.value=NOCUT; },
+  };
 }
