@@ -51,18 +51,19 @@ function sampleDetail(f, rnd){
 
 const VERT=`precision highp float;
   uniform mat4 modelViewMatrix, projectionMatrix;
-  uniform float uCurDepth,uFocus,uMode,uSelFeature,uFocusing;
+  uniform float uCurDepth,uFocus,uMode,uSelFeature,uFocusing,uHoverFeature;
   attribute vec3 position, aOffset, aColorA, aColorB;
   attribute float aScale, aDepth, aAlpha, aFeature;
   varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL;
   void main(){
     float prox = 1.0 - smoothstep(0.0, uFocus, abs(aDepth-uCurDepth));
     float sel = (uFocusing>0.5 && abs(aFeature-uSelFeature)<0.5) ? 1.0 : 0.0;
-    vHi = mix(0.30 + 1.05*prox, 1.35, sel);          // isolated feature is fully lit, any depth
+    float hov = (abs(aFeature-uHoverFeature)<0.5) ? 1.0 : 0.0;   // body under the cursor
+    vHi = mix(0.30 + 1.05*prox, 1.35, sel) + hov*1.05;           // hovered body lights up
     vColor = mix(aColorA, aColorB, uMode);
     float vis = uFocusing<0.5 ? 1.0 : (sel>0.5 ? 1.4 : 0.05);
-    vA = aAlpha*vis; vL = position;
-    vec3 wp = aOffset + position*aScale*(1.0+0.5*prox);
+    vA = aAlpha*vis*(1.0 + hov*0.95); vL = position;
+    vec3 wp = aOffset + position*aScale*(1.0+0.5*prox + hov*0.6);
     gl_Position = projectionMatrix*modelViewMatrix*vec4(wp,1.0);
   }`;
 const FRAG=`precision highp float;
@@ -113,7 +114,10 @@ function buildFootprints(footData){
     for(const [,m] of byFeature){ m.lmat.opacity=0.55; m.smat.opacity=0.15; }
     if(f && byFeature.has(f)){ const m=byFeature.get(f); m.lmat.opacity=0.95; m.smat.opacity=0.5; }
   }
-  return {group, setFootHover};
+  function setFootSolo(f){   // for focus: show only this feature's footprint
+    for(const [feat,m] of byFeature){ const on=feat===f; m.lmat.opacity=on?1.0:0.0; m.smat.opacity=on?0.6:0.0; }
+  }
+  return {group, setFootHover, setFootSolo};
 }
 
 export function makeStructures(){
@@ -168,16 +172,17 @@ export function makeStructures(){
   const mat=new THREE.RawShaderMaterial({ transparent:true, depthTest:false, depthWrite:false,
     blending:THREE.AdditiveBlending, vertexShader:VERT, fragmentShader:FRAG,
     uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.03}, uMode:{value:0}, uOpacity:{value:1},
-      uSelFeature:{value:-1}, uFocusing:{value:0} } });
+      uSelFeature:{value:-1}, uFocusing:{value:0}, uHoverFeature:{value:-1} } });
 
   const mesh=new THREE.Mesh(g,mat); mesh.frustumCulled=false; mesh.renderOrder=4;
   const foot=buildFootprints(footData);
 
   return {
-    group:mesh, pickProxies, footGroup:foot.group, setFootHover:foot.setFootHover,
+    group:mesh, pickProxies, footGroup:foot.group, setFootHover:foot.setFootHover, setFootSolo:foot.setFootSolo,
     setCurDepth:(u)=>mat.uniforms.uCurDepth.value=u,
     setMode:(m)=>mat.uniforms.uMode.value=m,
     setOpacity:(o)=>mat.uniforms.uOpacity.value=o,
+    setHover:(f)=>{ mat.uniforms.uHoverFeature.value = f ? info.get(f).index : -1; },
     focus:(f)=>{ if(!f){ mat.uniforms.uFocusing.value=0; } else { mat.uniforms.uFocusing.value=1; mat.uniforms.uSelFeature.value=info.get(f).index; } },
     infoFor:(f)=>info.get(f),
   };

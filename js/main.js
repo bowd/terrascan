@@ -265,11 +265,11 @@ function initPicking(){
   el.addEventListener('pointermove',e=>{
     if(state.focused || !structures.group.visible){ return; }
     const f=pickAt(e.clientX,e.clientY); hovered=f;
-    structures.setFootHover(f);
+    structures.setFootHover(f); structures.setHover(f);
     if(f){ ui.tip(f, e.clientX, e.clientY); el.style.cursor='pointer'; }
     else { ui.tip(null); el.style.cursor=''; }
   });
-  el.addEventListener('pointerleave',()=>{ ui.tip(null); structures.setFootHover(null); });
+  el.addEventListener('pointerleave',()=>{ ui.tip(null); structures.setFootHover(null); structures.setHover(null); });
   el.addEventListener('click',e=>{
     if(downPos && Math.hypot(e.clientX-downPos.x,e.clientY-downPos.y)>6) return; // was a drag
     if(state.focused || !structures.group.visible) return;
@@ -279,7 +279,10 @@ function initPicking(){
 function enterFocus(f){
   stopTour(); stopDive(); ui.tip(null);
   const inf=structures.infoFor(f);
-  state.focused=f; structures.focus(f); earthWire.visible=true; controls.autoRotate=false;
+  document.body.classList.add('focusing');
+  state.focused=f; structures.focus(f); structures.setHover(null);
+  structures.footGroup.visible=true; structures.setFootSolo(f);   // light only this body's surface footprint
+  earthWire.visible=true; controls.autoRotate=false;
   scan.mesh.visible=false; markerGroup.visible=false; relief.setOpacity(0.10); // declutter around the isolated body
   savedCam=camera.position.clone(); savedTarget=controls.target.clone();
   const c=inf.center, dist=Math.max(0.55, Math.min(3.2, inf.radius*5.0));
@@ -289,7 +292,9 @@ function enterFocus(f){
 }
 function exitFocus(){
   if(!state.focused) return;
-  structures.focus(null); earthWire.visible=false; ui.focusPanel(null);
+  document.body.classList.remove('focusing');
+  structures.focus(null); structures.setFootHover(null); structures.footGroup.visible=state.showFoot;
+  earthWire.visible=false; ui.focusPanel(null);
   scan.mesh.visible=state.showScan; markerGroup.visible=state.showMarkers; relief.setOpacity(state.reliefOpacity);
   glideTarget=new THREE.Vector3(0,0,0);                 // the globe pivot is always the origin
   glideCam=savedCam?savedCam.clone():new THREE.Vector3(0.2,0.9,3.0);
