@@ -64,11 +64,15 @@ const FRAG=`
     gl_FragColor = vec4(col, a);
   }`;
 
-function bodyMesh(geom, color){
+function bodyMesh(geom, color, order){
   const mat=new THREE.ShaderMaterial({ vertexShader:VERT, fragmentShader:FRAG,
-    transparent:true, depthWrite:false, depthTest:true, side:THREE.DoubleSide,
+    transparent:true, depthWrite:false, depthTest:false, side:THREE.DoubleSide,
     uniforms:{ uColor:{value:new THREE.Color(...color)}, uCurDepth:{value:0}, uBand:{value:0.07}, uOpacity:{value:1} } });
-  const m=new THREE.Mesh(geom,mat); m.frustumCulled=false; m.renderOrder=4; return m;
+  // The two bodies are origin-centered global surfaces, so their transparent-sort
+  // z-keys tie; with equal renderOrder the painter order flips as the camera orbits
+  // (red-over-blue ⇄ blue-over-red) and the overlap colour flickers. Distinct
+  // renderOrders pin one camera-independent order — KEEP THEM DIFFERENT.
+  const m=new THREE.Mesh(geom,mat); m.frustumCulled=false; m.renderOrder=order; return m;
 }
 
 export function makeDataBodies(ens){
@@ -100,16 +104,16 @@ export function makeDataBodies(ens){
     if(agree[(di*nlat+j)*nlon+i]/255 < AGREE_MIN) return -1000;
     return sign*sm[di*nlat*nlon+j*nlon+i] - THRESH;
   };
-  const build=(sign,color)=>{
+  const build=(sign,color,order)=>{
     const {pos,dep,indices}=surfaceNets(NX,NY,NZ, fieldFor(sign), toWorld);
     const g=new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
     g.setAttribute('aDepth',   new THREE.Float32BufferAttribute(dep,1));
     g.setIndex(indices); g.computeVertexNormals();
-    return {mesh:bodyMesh(g,color), tris:indices.length/3};
+    return {mesh:bodyMesh(g,color,order), tris:indices.length/3};
   };
-  const fast=build(+1,[0.42,0.62,1.0]);   // cold/fast → blue (slabs)
-  const slow=build(-1,[1.0,0.40,0.32]);   // hot/slow  → red  (LLSVPs, plumes)
+  const fast=build(+1,[0.42,0.62,1.0], 4.0);   // cold/fast → blue (slabs), painted first
+  const slow=build(-1,[1.0,0.40,0.32], 4.1);   // hot/slow  → red (LLSVPs/plumes), painted over
   const group=new THREE.Group(); group.add(fast.mesh, slow.mesh);
   if(typeof console!=='undefined') console.log('data bodies: isosurfaces', fast.tris+slow.tris, 'tris (fast',fast.tris,'slow',slow.tris,')');
   const each=(fn)=>{ fn(fast.mesh.material.uniforms); fn(slow.mesh.material.uniforms); };
