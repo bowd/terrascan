@@ -197,7 +197,7 @@ export function makeScanField(landMask){
 
   let coverageMean=0;
 
-  function update(depth){
+  function updateSynth(depth){
     dvs.fill(0); covBoost.fill(0); catId.fill(0); catStr.fill(0);
     const sat=SAT; // gain is applied live in the shader
 
@@ -252,9 +252,38 @@ export function makeScanField(landMask){
     tex.needsUpdate=true;
   }
 
+  // ---- real-data path: ensemble-mean ΔVs (R) + cross-model agreement (G) ----
+  let source='synth', ens=null;
+  function updateReal(depth){
+    const {depths,nlon,nlat,dvsScale,dvs:edv,agree:eag}=ens;
+    let k0=0; while(k0<depths.length-1 && depths[k0+1]<depth) k0++; const k1=Math.min(depths.length-1,k0+1);
+    const fd = depths[k1]>depths[k0] ? clamp((depth-depths[k0])/(depths[k1]-depths[k0]),0,1) : 0;
+    const SATr=1.4; let covSum=0;   // real dVs is smoother/smaller than the synthesis — saturate sooner
+    for(let py=0;py<TEX_H;py++){
+      const lat=90-(py+0.5)/TEX_H*180;
+      const gy=(90-lat)/180*nlat-0.5; let j0=Math.floor(gy); const fy=gy-j0; j0=clamp(j0,0,nlat-1); const j1=clamp(j0+1,0,nlat-1);
+      for(let px=0;px<TEX_W;px++){
+        const lon=(px+0.5)/TEX_W*360-180;
+        const gx=(lon+180)/360*nlon-0.5; let i0=Math.floor(gx); const fx=gx-i0; i0=((i0%nlon)+nlon)%nlon; const i1=(i0+1)%nlon;
+        const lerp2=(arr,kk,sc)=>{ const r0=(kk*nlat+j0)*nlon, r1=(kk*nlat+j1)*nlon;
+          const t=arr[r0+i0]+(arr[r0+i1]-arr[r0+i0])*fx, b=arr[r1+i0]+(arr[r1+i1]-arr[r1+i0])*fx; return (t+(b-t)*fy)/sc; };
+        const dvsv=lerp2(edv,k0,dvsScale)*(1-fd)+lerp2(edv,k1,dvsScale)*fd;
+        const agr =lerp2(eag,k0,255)*(1-fd)+lerp2(eag,k1,255)*fd;
+        const r=clamp(0.5+0.5*(dvsv/SATr),0,1);
+        const j=(py*TEX_W+px)*4;
+        data[j]=(r*255)|0; data[j+1]=(agr*255)|0; data[j+2]=0; data[j+3]=255;
+        covSum+=agr;
+      }
+    }
+    coverageMean=covSum/N; tex.needsUpdate=true;
+  }
+  function update(depth){ if(source==='real' && ens) updateReal(depth); else updateSynth(depth); }
+
   return {
     texture:tex,
     update,
+    setEnsemble:(e)=>{ ens=e; },
+    setSource:(s)=>{ source=s; },
     get coverageMean(){return coverageMean;},
   };
 }

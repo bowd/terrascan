@@ -18,6 +18,10 @@ export function initControls(h){
 
   document.querySelectorAll('#colormode button').forEach(b=>
     b.addEventListener('click', ()=>h.onColorMode(b.dataset.mode)));
+  document.querySelectorAll('#datasrc button').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('#datasrc button').forEach(x=>x.classList.toggle('active',x===b));
+    h.onSource(b.dataset.src);
+  }));
 
   const tog=(id,name)=>$(id).addEventListener('change',e=>h.onToggle(name,e.target.checked));
   tog('#t-struct','struct'); tog('#t-scan','scan'); tog('#t-infer','infer'); tog('#t-theory','theory');
@@ -95,6 +99,7 @@ export function initControls(h){
     },
     dataBody(html){ $('#data-body').innerHTML=html; },
     know(text){ $('#know').textContent=text; },
+    sourceNote(t){ $('#scan-source-note').textContent=t; },
     reflectDials(norms){ document.querySelectorAll('.dial').forEach(s=>{ const v=norms[s.dataset.dial]; if(v!=null) s.value=Math.round(Math.max(0,Math.min(1,v))*100); }); },
     tip(f, x, y){
       if(!f){ $('#tip').classList.add('hidden'); return; }

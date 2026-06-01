@@ -116,6 +116,8 @@ canvas{display:block}
 .sw.hatch{background:repeating-linear-gradient(45deg,#9aa3b6 0 1.5px,transparent 1.5px 3.5px);box-shadow:none;border:1px solid var(--stroke)}
 .legend-key.chips li{font-size:11px;color:var(--dim);align-items:center}
 .legend-foot{font-size:10.5px;color:var(--faint);font-style:italic;margin:9px 0 0}
+#datasrc{margin-top:9px}
+.src-note{font-size:10px;line-height:1.45;color:var(--faint);font-style:italic;margin:8px 0 2px}
 .legend-lead{font-size:11px;line-height:1.5;color:var(--dim);margin-bottom:9px}
 .legend-lead b{color:#eaf3ff}.legend-lead em{font-style:italic;color:#cdd8ea}
 

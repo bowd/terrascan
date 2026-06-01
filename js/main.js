@@ -57,7 +57,7 @@ const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
   showStruct:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
   showBorders:false, showMarkers:true, showFoot:false, showExp:false, spin:true,
-  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4,
+  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'synth',
 };
 
 // ---------- tunable dials (every magic number, live) ----------
@@ -68,7 +68,7 @@ const dials={ reliefOpacity:0.72, reliefBright:1.12, coastOpacity:0.42,
   scanStrength:0.58, scanGain:1.0, scanFloor:0.16,
   modelGain:1.0, modelHaze:0.62, bodyOpacity:0.9, focusBand:0.03 };
 function applyDial(name,v){ dials[name]=v;
-  if(name==='reliefOpacity') relief&&relief.setOpacity(v);
+  if(name==='reliefOpacity') setReliefOpacity();
   else if(name==='reliefBright') relief&&relief.setBright(v);
   else if(name==='coastOpacity'){ coastObj&&(coastObj.material.opacity=v); bordersObj&&(bordersObj.material.opacity=Math.min(0.9,v*1.15)); }
   else if(name==='scanStrength') scan&&scan.setOpacity(v);
@@ -90,6 +90,11 @@ function applyFocus(t){
   applyDial('bodyOpacity', 0.65+0.4*t);
   ui&&ui.reflectDials(dialNorms());
 }
+// peel-back: the relief skin is opaque at the surface and fades as you descend,
+// so driving the depth slider feels like peeling the crust off to reveal the inside.
+const smooth01=(x)=>{ x=x<0?0:x>1?1:x; return x*x*(3-2*x); };
+const peelFactor=(d)=> 1 - 0.86*smooth01((d-50)/520);   // 1 @50km → ~0.14 by ~570km
+function setReliefOpacity(){ relief&&relief.setOpacity(dials.reliefOpacity*peelFactor(state.depth)); }
 
 let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj, expObj;
 let earthWire, hovered=null, glideCam=null, glideTarget=null, savedCam=null, savedTarget=null;
@@ -106,6 +111,7 @@ async function init(){
   const landMask=rasterizeLand(land, TEX_W, TEX_H);
 
   scanField=makeScanField(landMask);
+  loadEnsemble();
   scan=makeScanShell(scanField.texture);
   scan.setOpacity(dials.scanStrength);
   scanScene.add(scan.mesh);
@@ -193,6 +199,11 @@ const handlers={
   },
   onDial:(name,t)=>{ const r=DIAL_RANGE[name]; if(r) applyDial(name, r[0]+(r[1]-r[0])*t); },
   onFocus:(t)=>applyFocus(t),
+  onSource:(s)=>{ state.source=s; scanField.setSource(s); builtDepth=-999;
+    structures.group.visible = (s==='real') ? false : state.showStruct;  // bodies are synthetic; step aside for real data
+    ui.sourceNote(s==='real'
+      ? 'Ensemble mean ΔVs of three real models (SGLOBE-rani · SEISGLOB2 · TX2011). Hatched/faint where the models disagree = estimated, not well-mapped.'
+      : 'A hand-built, geographically-faithful synthesis of published features.'); },
   onDive:()=>{ stopTour(); state.diving?stopDive():startDive(); },
   onTickJump:(d)=>{ stopTour(); stopDive(); animateTo(d); },
   onStep:(dz)=>{ stopTour(); stopDive(); setDepth(state.depth+dz); },
@@ -208,6 +219,7 @@ function setDepth(d){
   state.depth=d; pendingDepth=d;
   scan.setRadius(depthToUnit(d));
   structures.setCurDepth(d/EARTH_RADIUS);
+  setReliefOpacity();   // peel the surface back with depth
   // sample a hair below so velocities agree with the (deeper) layer label at a discontinuity
   const gl=geoLayerAt(d), p=premAt(Math.min(d+0.5, EARTH_RADIUS));
   ui.depth(d, gl.name+(gl.state==='liquid'?' · liquid':''));
@@ -280,6 +292,16 @@ function expTipHTML(e){
   const k=EXP_KIND[e.kind];
   return `<b>${e.name}</b><span class="tip-type">${k.label}${e.year?' · '+e.year:''}</span>`+
     `<span class="tip-d">${e.reveals}<br>${e.reach}${e.src?' · click for source ↗':''}</span>`;
+}
+
+// real multi-model ensemble (baked by build-tomo.mjs): mean ΔVs + cross-model agreement
+async function loadEnsemble(){
+  try{
+    const j=await fetch('./data/tomo-ensemble.json').then(r=>r.json());
+    const dvs=new Int8Array(Uint8Array.from(atob(j.dvs),c=>c.charCodeAt(0)).buffer);
+    const agree=Uint8Array.from(atob(j.agree),c=>c.charCodeAt(0));
+    scanField.setEnsemble({depths:j.depths, nlon:j.nlon, nlat:j.nlat, dvsScale:j.dvsScale, dvs, agree, models:j.models});
+  }catch(e){ console.warn('ensemble load failed', e); }
 }
 
 // ---------- dive ----------
@@ -363,7 +385,7 @@ function exitFocus(){
   document.body.classList.remove('focusing');
   structures.focus(null); structures.setFootHover(null); structures.footGroup.visible=state.showFoot;
   earthWire.visible=false; ui.focusPanel(null);
-  scan.mesh.visible=state.showScan; markerGroup.visible=state.showMarkers; relief.setOpacity(dials.reliefOpacity);
+  scan.mesh.visible=state.showScan; markerGroup.visible=state.showMarkers; setReliefOpacity();
   glideTarget=new THREE.Vector3(0,0,0);                 // the globe pivot is always the origin
   glideCam=savedCam?savedCam.clone():new THREE.Vector3(0.2,0.9,3.0);
   state.focused=null; controls.autoRotate=state.spin;
