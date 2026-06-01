@@ -1,6 +1,6 @@
 // ui.js — owns the left-rail DOM: depth controls, the scan legend, the readout
 // (with the colour↔baseline bridge), the guided intro, and the tour caption.
-import { GEO_LAYERS, EARTH_RADIUS } from './earthModel.js';
+import { GEO_LAYERS, EARTH_RADIUS, DEPTH_STOPS } from './earthModel.js';
 
 const $ = (s)=>document.querySelector(s);
 const ANOM = {fast:'#6f9bff', slow:'#ff6b5a'};
@@ -19,8 +19,8 @@ export function initControls(h){
     b.addEventListener('click', ()=>h.onColorMode(b.dataset.mode)));
 
   const tog=(id,name)=>$(id).addEventListener('change',e=>h.onToggle(name,e.target.checked));
-  tog('#t-scan','scan'); tog('#t-theory','theory'); tog('#t-coast','coast');
-  tog('#t-markers','markers'); tog('#t-spin','spin');
+  tog('#t-struct','struct'); tog('#t-scan','scan'); tog('#t-theory','theory');
+  tog('#t-coast','coast'); tog('#t-markers','markers'); tog('#t-spin','spin');
 
   $('#scan-opacity').addEventListener('input',e=>h.onScanOpacity(+e.target.value/100));
   $('#blur-amount').addEventListener('input',e=>h.onBlur(+e.target.value/100));
@@ -44,6 +44,12 @@ export function initControls(h){
   // tour
   $('#tour-btn').addEventListener('click',h.onTour);
   $('#tour-stop').addEventListener('click',h.onTourStop);
+
+  // data sources modal
+  const data=$('#data');
+  $('#data-btn').addEventListener('click',()=>data.classList.remove('hidden'));
+  $('#data-close').addEventListener('click',()=>data.classList.add('hidden'));
+  data.addEventListener('click',e=>{if(e.target===data)data.classList.add('hidden');});
 
   // depth rail (coloured cross-section of the whole planet)
   const rail=$('#depth-rail');
@@ -69,7 +75,10 @@ export function initControls(h){
       if(+slider.value!==Math.round(d)) slider.value=Math.round(d);
       cursor.style.left=(d/EARTH_RADIUS*100)+'%';
       ticks.querySelectorAll('.tick').forEach(t=>t.classList.toggle('on',Math.abs(+t.dataset.d-d)<70));
+      const stop=DEPTH_STOPS.reduce((a,b)=>Math.abs(b.d-d)<Math.abs(a.d-d)?b:a);
+      $('#depth-note').textContent='“'+stop.label+'” — '+stop.blurb;
     },
+    dataBody(html){ $('#data-body').innerHTML=html; },
     readout(o){
       $('#ro-vs').textContent=o.vs; $('#ro-temp').textContent=o.temp;
       $('#ro-rho').textContent=o.rho; $('#ro-p').textContent=o.p;

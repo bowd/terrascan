@@ -39,8 +39,12 @@ await setDepth(2700); await page.waitForTimeout(1400); await page.screenshot({pa
 await click('#colormode button[data-mode="dvs"]');
 
 await setChk('#t-theory', false); await page.waitForTimeout(700); await page.screenshot({path:'shots/06-scan-only.png'});
-await setChk('#t-theory', true); await setChk('#t-scan', false); await page.waitForTimeout(700); await page.screenshot({path:'shots/07-model-only.png'});
-await setChk('#t-scan', true);
+await setChk('#t-theory', true); await setChk('#t-scan', false); await setChk('#t-struct', false); await page.waitForTimeout(700); await page.screenshot({path:'shots/07-model-only.png'});
+await setChk('#t-scan', true); await setChk('#t-struct', true);
+
+// 3D structures at mid-mantle + data panel
+await setDepth(1800); await page.waitForTimeout(1400); await page.screenshot({path:'shots/09-structures.png'});
+await click('#data-btn'); await page.waitForTimeout(500); await page.screenshot({path:'shots/10-data.png'}); await click('#data-close');
 
 // tour
 await setDepth(2700); await page.waitForTimeout(600);

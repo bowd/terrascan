@@ -39,6 +39,7 @@
       <div class="rail-actions">
         <button id="tour-btn" class="btn primary">▶ Take the tour</button>
         <button id="guide-btn" class="btn">ⓘ What am I seeing?</button>
+        <button id="data-btn" class="btn">✦ How we know — public data</button>
       </div>
     </header>
 
@@ -57,6 +58,7 @@
         <button id="dive-btn" class="mini wide">▶ dive to core</button>
         <button id="down-btn" class="mini" title="down 100 km">▼</button>
       </div>
+      <div id="depth-note" class="depth-note">—</div>
     </section>
 
     <!-- 2 · WHAT YOU'RE SEEING -->
@@ -119,7 +121,8 @@
     <section class="card">
       <div class="card-top"><span class="card-title">4 · LAYERS &amp; DISPLAY</span></div>
       <div class="toggles">
-        <label class="toggle"><input type="checkbox" id="t-scan" checked /><span>Scan</span></label>
+        <label class="toggle"><input type="checkbox" id="t-struct" checked /><span>3D bodies</span></label>
+        <label class="toggle"><input type="checkbox" id="t-scan" checked /><span>Depth slice</span></label>
         <label class="toggle"><input type="checkbox" id="t-theory" checked /><span>Model</span></label>
         <label class="toggle"><input type="checkbox" id="t-coast" checked /><span>Coastlines</span></label>
         <label class="toggle"><input type="checkbox" id="t-markers" checked /><span>Labels</span></label>
@@ -127,7 +130,7 @@
       </div>
       <details class="advanced">
         <summary>fine tuning</summary>
-        <div class="ctl"><span>scan strength</span><input id="scan-opacity" class="slider" type="range" min="0" max="100" value="92" /></div>
+        <div class="ctl"><span>slice strength</span><input id="scan-opacity" class="slider" type="range" min="0" max="100" value="58" /></div>
         <div class="ctl"><span>anomaly gain</span><input id="gain" class="slider" type="range" min="40" max="160" value="100" /></div>
         <div class="ctl"><span>model haze</span><input id="blur-amount" class="slider" type="range" min="0" max="100" value="62" /></div>
       </details>
@@ -161,6 +164,17 @@
         <button id="guide-explore" class="btn big">Explore on my own</button>
       </p>
       <p class="credits">Drag to orbit · scroll to zoom · click a boundary to jump there. Coastlines: Natural Earth. Reference model: PREM (Dziewonski &amp; Anderson 1981). Built with three.js.</p>
+    </div>
+  </div>
+
+  <!-- ===== Public data sources ===== -->
+  <div id="data" class="modal-wrap hidden">
+    <div class="modal">
+      <button id="data-close" class="modal-close">✕</button>
+      <span class="kicker">HOW WE KNOW</span>
+      <h2>Everything public that maps the Earth's inside</h2>
+      <p>We have never drilled past ~12 km. Everything deeper is <em>inferred</em> — mostly from earthquakes, plus gravity, magnetism, tiny particles, and lab physics. These are the public datasets &amp; models behind that inference.</p>
+      <div id="data-body" class="data-body"><p class="muted">gathering sources…</p></div>
     </div>
   </div>
 

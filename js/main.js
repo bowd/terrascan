@@ -7,8 +7,10 @@ import {
 import { makeScanField, activeFeatures, dominantFeatures } from './tomography.js';
 import { loadGeo, rasterizeLand, buildCoastlines, buildGraticule, latLonToVec3 } from './geo.js';
 import { makeTheoryShells, makeScanShell } from './shells.js';
+import { makeStructures } from './structures.js';
 import { makePipeline } from './postfx.js';
 import { initControls } from './ui.js';
+import { DATA_GROUPS, dataSourcesHTML } from './datasources.js';
 
 const TEX_W=1024, TEX_H=512;
 const PIX=Math.min(window.devicePixelRatio||1, 2);
@@ -47,12 +49,12 @@ theoryScene.add(theoryShells);
 
 // ---------- state ----------
 const state={
-  depth:0, mode:0, gain:1.0, scanOpacity:0.92, blur:0.62,
-  showScan:true, showTheory:true, showCoast:true, showMarkers:true, spin:true,
+  depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62,
+  showStruct:true, showScan:true, showTheory:true, showCoast:true, showMarkers:true, spin:true,
   diving:false, touring:false, contextLost:false,
 };
 
-let scanField, scan, markers=[], markerGroup, ui, coastObj, gratObj;
+let scanField, scan, structures, markers=[], markerGroup, ui, coastObj, gratObj;
 const DOT_GEO=new THREE.SphereGeometry(0.012, 12, 12);
 
 // ---------- boot ----------
@@ -66,7 +68,11 @@ async function init(){
 
   scanField=makeScanField(landMask);
   scan=makeScanShell(scanField.texture);
+  scan.setOpacity(state.scanOpacity);
   scanScene.add(scan.mesh);
+
+  structures=makeStructures();
+  scanScene.add(structures.mesh);
 
   gratObj=buildGraticule(0.999); scanScene.add(gratObj);
   coastObj=buildCoastlines(coastlines, 1.001); scanScene.add(coastObj);
@@ -76,6 +82,7 @@ async function init(){
 
   ui=initControls(handlers);
   ui.colorMode('dvs');
+  ui.dataBody(dataSourcesHTML(DATA_GROUPS));
   let seen=false; try{ seen=!!localStorage.getItem('terrascan_seen'); }catch(e){}
   if(!seen) ui.guide(true); // show the intro once; the ⓘ button reopens it
 
@@ -112,10 +119,11 @@ function makeLabel(text, color){
 // ---------- handlers ----------
 const handlers={
   onDepth:(d)=>{ stopTour(); stopDive(); setDepth(d); },
-  onColorMode:(m)=>{ state.mode=(m==='feature')?1:0; scan.setMode(state.mode); ui.colorMode(m);
+  onColorMode:(m)=>{ state.mode=(m==='feature')?1:0; scan.setMode(state.mode); structures.setMode(state.mode); ui.colorMode(m);
     refreshFeaturePanel(); },
   onToggle:(name,v)=>{
-    if(name==='scan') state.showScan=v;
+    if(name==='struct'){ state.showStruct=v; structures.mesh.visible=v; }
+    else if(name==='scan'){ state.showScan=v; scan.mesh.visible=v; }
     else if(name==='theory') state.showTheory=v;
     else if(name==='coast'){ state.showCoast=v; coastObj&&(coastObj.visible=v); gratObj&&(gratObj.visible=v); }
     else if(name==='markers'){ state.showMarkers=v; markerGroup.visible=v; }
@@ -137,6 +145,7 @@ function setDepth(d){
   d=Math.max(0,Math.min(EARTH_RADIUS,d));
   state.depth=d; pendingDepth=d;
   scan.setRadius(depthToUnit(d));
+  structures.setCurDepth(d/EARTH_RADIUS);
   // sample a hair below so velocities agree with the (deeper) layer label at a discontinuity
   const gl=geoLayerAt(d), p=premAt(Math.min(d+0.5, EARTH_RADIUS));
   ui.depth(d, gl.name+(gl.state==='liquid'?' · liquid':''));
@@ -246,7 +255,7 @@ function animate(){
   // Where coverage collapses (the deep core), the blurry estimate brightens to take over.
   const fillIn=1-THREE.MathUtils.smoothstep(scanField?scanField.coverageMean:0.4, 0.05, 0.30);
   pipeline.render(theoryScene, scanScene, camera, {
-    showTheory:state.showTheory, showScan:state.showScan,
+    showTheory:state.showTheory, showScan:true,
     blur:state.blur,
     theoryIntensity:(state.showScan ? 0.32+fillIn*0.5 : 0.74)+state.blur*0.12,
   });

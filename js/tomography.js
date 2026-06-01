@@ -78,6 +78,11 @@ export const FEATURES = [
   {name:'East Pacific Rise', type:'ridge', lat:-18, lon:-110, latExt:28, lonExt:5, dTop:0, dBot:180, anomaly:'slow', mag:1.6, conf:0.5},
   {name:'East African Rift', type:'ridge', lat:0, lon:36, latExt:14, lonExt:5, dTop:0, dBot:200, anomaly:'slow', mag:1.4, conf:0.5},
   {name:'SW/Central Indian Ridge', type:'ridge', lat:-35, lon:55, latExt:18, lonExt:8, dTop:0, dBot:180, anomaly:'slow', mag:1.3, conf:0.4},
+  // ---- lowermost mantle: the cold slab graveyard ponding AROUND the hot piles ----
+  {name:'E-Asia slab graveyard', type:'slab', lat:33, lon:128, latExt:24, lonExt:24, dTop:2200, dBot:2891, anomaly:'fast', mag:1.4, conf:0.7},
+  {name:'Americas slab graveyard', type:'slab', lat:18, lon:-82, latExt:30, lonExt:22, dTop:2200, dBot:2891, anomaly:'fast', mag:1.3, conf:0.68},
+  {name:'Tethyan slab graveyard', type:'slab', lat:31, lon:42, latExt:16, lonExt:30, dTop:2200, dBot:2891, anomaly:'fast', mag:1.1, conf:0.55},
+  {name:'Perm anomaly', type:'llsvp', lat:60, lon:75, latExt:8, lonExt:9, dTop:2500, dBot:2891, anomaly:'slow', mag:1.6, conf:0.45},
 ];
 
 // ---------- helpers ----------
