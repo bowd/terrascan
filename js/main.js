@@ -15,6 +15,7 @@ import { DATA_GROUPS, dataSourcesHTML } from './datasources.js';
 import { EXPERIMENTS, EXP_KIND } from './experiments.js';
 import { makeDataBodies } from './databodies.js';
 import { makeDataEngine } from './dataengine.js';
+import { makePresets } from './presets.js';
 
 const TEX_W=1024, TEX_H=512;
 const PIX=Math.min(window.devicePixelRatio||1, 2);
@@ -179,7 +180,7 @@ async function init(){
   const landMask=rasterizeLand(land, TEX_W, TEX_H);
 
   scanField=makeScanField(landMask);
-  loadEnsemble();
+  const ensembleReady=loadEnsemble();
   scan=makeScanShell(scanField.texture);
   scan.setOpacity(dials.scanStrength);
   scanScene.add(scan.mesh);
@@ -229,6 +230,13 @@ async function init(){
   const ov=document.getElementById('loading');
   ov.classList.add('hide'); setTimeout(()=>ov.remove(), 900);
   animate();
+
+  // presets: paint the list, then auto-apply the default once the engine is ready
+  // (so model toggles / clustering restore too). Guard everything — never block boot.
+  renderPresets();
+  try{ await ensembleReady; }catch(e){}
+  try{ presets.applyDefault(); }catch(e){ console.warn('preset default failed', e); }
+  renderPresets();
 }
 
 // ---------- markers ----------
@@ -295,6 +303,10 @@ const handlers={
   onTour:()=>{ state.touring?stopTour():startTour(); },
   onTourStop:()=>stopTour(),
   onExitFocus:()=>exitFocus(),
+  onPresetSave:(name)=>{ presets.save(name); renderPresets(); },
+  onPresetLoad:(id)=>{ if(presets.load(id)){ renderPresets(); ui.presetPulse&&ui.presetPulse(); } },
+  onPresetDelete:(id)=>{ presets.remove(id); renderPresets(); },
+  onPresetDefault:(id)=>{ presets.setDefault(id); renderPresets(); },
 };
 
 // ---------- depth ----------
@@ -623,6 +635,81 @@ function fail(msg){
   const ov=document.getElementById('loading');
   if(ov) ov.innerHTML='<div class="loading-text">'+msg+'</div>';
 }
+
+// ---------- settings presets (capture / restore the whole configuration) ----------
+// The toggle name <-> state field map, so capture & restore stay in lock-step with
+// the handlers above. Names match handlers.onToggle(name,...) and the #t-* checkboxes.
+const TOGGLE_MAP = {
+  struct:'showStruct', scan:'showScan', infer:'showInfer', theory:'showTheory',
+  relief:'showRelief', coast:'showCoast', borders:'showBorders', markers:'showMarkers',
+  foot:'showFoot', exp:'showExp', spin:'spin', drill:'drillNav', cutaway:'cutaway',
+  peel:'reliefPeel',
+};
+const TOGGLE_DOM = {  // checkbox id per toggle name (note #t-cut, not #t-cutaway)
+  struct:'#t-struct', scan:'#t-scan', infer:'#t-infer', theory:'#t-theory',
+  relief:'#t-relief', coast:'#t-coast', borders:'#t-borders', markers:'#t-markers',
+  foot:'#t-foot', exp:'#t-exp', spin:'#t-spin', drill:'#t-drill', cutaway:'#t-cut',
+  peel:'#t-peel',
+};
+
+function captureSettings(){
+  const toggles={};
+  for(const name in TOGGLE_MAP) toggles[name]=!!state[TOGGLE_MAP[name]];
+  // cluster slider t-values (0..1), inverse of applyCluster's range mapping
+  const clus={};
+  for(const k in CLUS_RANGE){ const r=CLUS_RANGE[k]; clus[k]=(clusterParams[k]-r[0])/(r[1]-r[0]); }
+  return {
+    v:1,
+    depth:state.depth,
+    colorMode:(state.mode===1)?'feature':'dvs',
+    source:state.source,
+    focusBlend:state.focusBlend,
+    toggles,
+    dials:dialNorms(),                                   // normalized 0..1 per dial
+    cluster:{ ...clus, strategy:clusterParams.strategy },
+    normalize: engine ? !!engine.params().normalize : true,
+    models: engine ? engine.list().map(m=>({name:m.name, enabled:!!m.enabled})) : [],
+  };
+}
+
+function applySettings(s){
+  if(!s || typeof s!=='object') return;
+  // 1) source + data pipeline (models / normalize / cluster / strategy) FIRST
+  if(s.source==='synth'||s.source==='real'){ handlers.onSource(s.source); ui.segmented('datasrc','src',s.source); }
+  if(engine){
+    if(typeof s.normalize==='boolean'){ engine.setNormalize(s.normalize); ui.setChecked('#t-normalize', s.normalize); }
+    if(Array.isArray(s.models)){
+      for(const m of s.models){ if(m&&m.name!=null) engine.setEnabled(m.name, !!m.enabled); }
+      ui.setModels(engine.list());                       // re-render rows with restored checks
+      // reflect the "all S/all P" master toggles
+      const ls=engine.list();
+      const allS=ls.filter(m=>m.kind==='S'), allP=ls.filter(m=>m.kind==='P');
+      ui.setChecked('#t-all-s', allS.length>0 && allS.every(m=>m.enabled));
+      ui.setChecked('#t-all-p', allP.length>0 && allP.every(m=>m.enabled));
+    }
+    if(s.cluster){
+      for(const k in CLUS_RANGE){ const t=s.cluster[k];
+        if(typeof t==='number'){ applyCluster(k, t);     // updates clusterParams + readouts + schedules refresh
+          const sl=document.querySelector('.clus[data-clus="'+k+'"]'); if(sl) sl.value=Math.round(Math.max(0,Math.min(1,t))*100); } }
+      if(typeof s.cluster.strategy==='string'){ handlers.onVizStrategy(s.cluster.strategy); ui.segmented('vizmode','viz',s.cluster.strategy); }
+    }
+    scheduleRefresh();
+  }
+  // 2) dials + the focus master rack
+  if(typeof s.focusBlend==='number'){ applyFocus(s.focusBlend); const fb=document.querySelector('#focus-blend'); if(fb) fb.value=Math.round(s.focusBlend*100); }
+  if(s.dials){ for(const name in DIAL_RANGE){ const t=s.dials[name];
+    if(typeof t==='number'){ const r=DIAL_RANGE[name]; applyDial(name, r[0]+(r[1]-r[0])*t); } } ui.reflectDials(dialNorms()); }
+  // 3) colour mode
+  if(s.colorMode==='dvs'||s.colorMode==='feature'){ handlers.onColorMode(s.colorMode); }
+  // 4) layer toggles — drive both state (via handler) and the checkboxes
+  if(s.toggles){ for(const name in TOGGLE_MAP){ const v=s.toggles[name];
+    if(typeof v==='boolean'){ handlers.onToggle(name, v); const cb=document.querySelector(TOGGLE_DOM[name]); if(cb) cb.checked=v; } } }
+  // 5) depth LAST (peel handler may have moved it; restore the saved value, slider follows via ui.depth)
+  if(typeof s.depth==='number'){ stopTour(); stopDive(); setDepth(s.depth); }
+}
+
+const presets = makePresets({ capture: captureSettings, apply: applySettings });
+function renderPresets(){ if(ui) ui.renderPresets(presets.list(), presets.getDefaultId()); }
 
 // expose coast/grat refs for toggles
 // (assigned after build)

@@ -62,6 +62,12 @@ export function initControls(h){
   $('#tour-stop').addEventListener('click',h.onTourStop);
   $('#focus-back').addEventListener('click',h.onExitFocus);
 
+  // presets — save the current config under a typed name (empty → auto-named)
+  const presetName=$('#preset-name'), presetSave=$('#preset-save');
+  const doSave=()=>{ if(!h.onPresetSave) return; h.onPresetSave((presetName&&presetName.value)||''); if(presetName) presetName.value=''; };
+  if(presetSave) presetSave.addEventListener('click',doSave);
+  if(presetName) presetName.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doSave(); } });
+
   // data sources modal
   const data=$('#data');
   $('#data-btn').addEventListener('click',()=>data.classList.remove('hidden'));
@@ -131,6 +137,33 @@ export function initControls(h){
     },
     clusterValue(name, text){ const e=$('#clus-'+name); if(e) e.textContent=text; },
     reflectDials(norms){ document.querySelectorAll('.dial').forEach(s=>{ const v=norms[s.dataset.dial]; if(v!=null) s.value=Math.round(Math.max(0,Math.min(1,v))*100); }); },
+    // reflect a segmented control's active button by data-attr value
+    segmented(id, attr, value){ document.querySelectorAll('#'+id+' button').forEach(b=>b.classList.toggle('active', b.dataset[attr]===value)); },
+    // tick a checkbox WITHOUT firing its change handler (the caller drives the model directly)
+    setChecked(id, on){ const e=$(id); if(e) e.checked=!!on; },
+    renderPresets(plist, defaultId){
+      const el=$('#preset-list'); if(!el) return;
+      const rows=plist||[];
+      if(!rows.length){ el.innerHTML='<li class="preset-empty">no presets yet — save the current view below</li>'; return; }
+      el.innerHTML=rows.map(p=>{
+        const isDef=p.id===defaultId;
+        return `<li class="preset-row" data-id="${p.id}">`+
+          `<button class="preset-star${isDef?' on':''}" data-act="default" title="${isDef?'default — applied on load (click to unset)':'set as default (auto-apply on load)'}">${isDef?'★':'☆'}</button>`+
+          `<button class="preset-load" data-act="load" title="load this preset">${p.name.replace(/</g,'&lt;')}</button>`+
+          `<button class="preset-del" data-act="del" title="delete">✕</button>`+
+        `</li>`;
+      }).join('');
+      el.querySelectorAll('.preset-row').forEach(row=>{
+        const id=row.dataset.id;
+        row.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
+          const a=btn.dataset.act;
+          if(a==='load') h.onPresetLoad&&h.onPresetLoad(id);
+          else if(a==='del') h.onPresetDelete&&h.onPresetDelete(id);
+          else if(a==='default') h.onPresetDefault&&h.onPresetDefault(id);
+        }));
+      });
+    },
+    presetPulse(){ const c=$('#preset-card'); if(!c) return; c.classList.remove('applied'); void c.offsetWidth; c.classList.add('applied'); },
     tip(f, x, y){
       if(!f){ $('#tip').classList.add('hidden'); return; }
       const ti=TYPE_INFO[f.type]||{};
