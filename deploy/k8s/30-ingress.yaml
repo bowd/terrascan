@@ -7,11 +7,11 @@ metadata:
     app.kubernetes.io/name: terrascan
     app.kubernetes.io/part-of: terrascan
   annotations:
-    solace.internal/description: TERRASCAN static site (three.js earth-interior viewer)
+    app.kubernetes.io/description: TERRASCAN static site (three.js earth-interior viewer)
 spec:
   ingressClassName: traefik
   rules:
-    - host: terrascan.solace.internal
+    - host: terrascan.example.internal
       http:
         paths:
           - path: /
@@ -23,5 +23,5 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - terrascan.solace.internal
-      secretName: solace-wildcard-tls
+        - terrascan.example.internal
+      secretName: wildcard-tls
