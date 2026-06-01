@@ -518,9 +518,12 @@ function enterFocus(f){
   const inf=structures.infoFor(f);
   document.body.classList.add('focusing');
   state.focused=f; structures.focus(f); structures.setHover(null);
-  structures.footGroup.visible=true; structures.setFootSolo(f);   // light only this body's surface footprint
+  structures.footGroup.visible=true; structures.setFootSolo(f);   // ONLY this body's footprint
   earthWire.visible=true; controls.autoRotate=false;
-  scan.mesh.visible=false; markerGroup.visible=false; relief.setOpacity(0.10); // declutter around the isolated body
+  // isolate the body: hide everything else (slice, data bodies, coastlines, graticule, markers)
+  scan.mesh.visible=false; markerGroup.visible=false; relief.setOpacity(0.10);
+  if(dataBodies) dataBodies.group.visible=false;
+  coastObj&&(coastObj.visible=false); gratObj&&(gratObj.visible=false);
   savedCam=camera.position.clone(); savedTarget=controls.target.clone();
   const c=inf.center, dist=Math.max(0.55, Math.min(3.2, inf.radius*5.0));
   const dir=camera.position.clone().sub(controls.target).normalize();
@@ -533,6 +536,8 @@ function exitFocus(){
   structures.focus(null); structures.setFootHover(null); structures.footGroup.visible=state.showFoot;
   earthWire.visible=false; ui.focusPanel(null);
   scan.mesh.visible=state.showScan; markerGroup.visible=state.showMarkers; setReliefOpacity();
+  if(dataBodies) dataBodies.group.visible=state.showBodies;
+  coastObj&&(coastObj.visible=state.showCoast); gratObj&&(gratObj.visible=state.showCoast);
   glideTarget=new THREE.Vector3(0,0,0);                 // the globe pivot is always the origin
   glideCam=savedCam?savedCam.clone():new THREE.Vector3(0.2,0.9,3.0);
   state.focused=null; controls.autoRotate=state.spin;

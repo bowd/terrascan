@@ -64,11 +64,11 @@ const VERT=`precision highp float;
     float prox = 1.0 - smoothstep(0.0, uFocus, abs(aDepth-uCurDepth));
     float sel = (uFocusing>0.5 && abs(aFeature-uSelFeature)<0.5) ? 1.0 : 0.0;
     float hov = (abs(aFeature-uHoverFeature)<0.5) ? 1.0 : 0.0;
-    vHi = mix(0.26 + 0.80*prox, 1.10, sel) + hov*0.4;
+    vHi = mix(0.60 + 0.40*prox, 1.20, sel) + hov*0.4;
     vColor = mix(aColorA, aColorB, uMode);
     float vis = uFocusing<0.5 ? 1.0 : (sel>0.5 ? 1.4 : 0.05);
     vA = aAlpha*vis*(1.0 + hov*0.45);
-    vec3 wp = aOffset + position*aScale*uSize*(1.7+0.4*prox + hov*0.3);   // big, overlapping -> merge
+    vec3 wp = aOffset + position*aScale*uSize*(2.0+0.4*prox + hov*0.3);   // big, overlapping -> merge
     vec4 mv = modelViewMatrix*vec4(wp,1.0);
     vN = normalize(mat3(modelViewMatrix)*normalize(position));            // blobs are unrotated unit spheres
     vView = normalize(-mv.xyz);
@@ -81,9 +81,10 @@ const FRAG=`precision highp float;
   void main(){
     if(uClip>0.5 && vAD < uCurDepth - 0.001) discard;
     float ndv = abs(dot(normalize(vN), normalize(vView)));
-    float puff = pow(ndv, 1.3);                  // soft radial falloff -> no hard sphere edge
-    float link = mix(1.0, vSup, uDataLink);      // survey link: fade toward measured support
-    gl_FragColor = vec4(vColor*vHi*puff*vA*uOpacity*uGlow*link, 1.0);
+    float link = max(0.35, mix(1.0, vSup, uDataLink));      // survey link, floored so always visible
+    vec3 col = vColor*(0.72+0.28*ndv)*uGlow;
+    float a = clamp(vA*vHi*uOpacity*link*0.95, 0.0, 0.96);  // SOLID volume via alpha, not additive glow
+    gl_FragColor = vec4(col, a);
   }`;
 
 // 2D convex hull (monotone chain)
@@ -159,9 +160,9 @@ export function makeStructures(){
     const stride=Math.max(2, Math.floor(det.length/12));
     for(let i=0;i<det.length;i++){
       const [lat,lon,depth,scale]=det[i];
-      add(lat,lon,depth,scale,0.30,fi,aCol,bCol);                 // raw detail (soft, low alpha to merge)
-      if(i%stride===0){                                           // sparse big puff -> fills the volume
-        const p=add(lat,lon,depth,bigR,0.18,fi,aCol,bCol);
+      add(lat,lon,depth,scale,0.9,fi,aCol,bCol);                  // raw detail (solid)
+      if(i%stride===0){                                           // sparse big blob -> fills the volume
+        const p=add(lat,lon,depth,bigR,0.7,fi,aCol,bCol);
         const pr=new THREE.Mesh(proxyGeo,proxyMat); pr.position.copy(p); pr.scale.setScalar(bigR*1.15);
         pr.userData={feature:f}; pr.updateMatrixWorld(); pickProxies.push(pr);
       }
@@ -186,13 +187,14 @@ export function makeStructures(){
   g.setAttribute('aSupport',new THREE.InstancedBufferAttribute(new Float32Array(scl.length).fill(1),1));
   g.instanceCount=scl.length;
 
-  const mat=new THREE.RawShaderMaterial({ transparent:true, depthTest:false, depthWrite:false,
-    blending:THREE.AdditiveBlending, vertexShader:VERT, fragmentShader:FRAG,
-    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.03}, uMode:{value:0}, uOpacity:{value:0.85},
-      uGlow:{value:0.7}, uSize:{value:0.8}, uDataLink:{value:0},
+  const mat=new THREE.RawShaderMaterial({ transparent:true, depthTest:true, depthWrite:true,
+    side:THREE.FrontSide, blending:THREE.NormalBlending, vertexShader:VERT, fragmentShader:FRAG,
+    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.03}, uMode:{value:0}, uOpacity:{value:0.95},
+      uGlow:{value:1.0}, uSize:{value:0.85}, uDataLink:{value:0},
       uSelFeature:{value:-1}, uFocusing:{value:0}, uHoverFeature:{value:-1}, uClip:{value:0} } });
 
-  const mesh=new THREE.Mesh(g,mat); mesh.frustumCulled=false; mesh.renderOrder=4;
+  // draw ABOVE the relief surface (renderOrder 6) so the features aren't hidden at the surface
+  const mesh=new THREE.Mesh(g,mat); mesh.frustumCulled=false; mesh.renderOrder=6.5;
   const foot=buildFootprints(footData);
 
   return {
