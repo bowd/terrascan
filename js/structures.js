@@ -60,11 +60,12 @@ const VERT=`precision highp float;
     float prox = 1.0 - smoothstep(0.0, uFocus, abs(aDepth-uCurDepth));
     float sel = (uFocusing>0.5 && abs(aFeature-uSelFeature)<0.5) ? 1.0 : 0.0;
     float hov = (abs(aFeature-uHoverFeature)<0.5) ? 1.0 : 0.0;   // body under the cursor
-    vHi = mix(0.30 + 1.05*prox, 1.35, sel) + hov*0.5;            // hovered body lifts gently
+    vHi = mix(0.24 + 0.82*prox, 1.05, sel) + hov*0.4;            // softer: dimmer, gentler depth pop
     vColor = mix(aColorA, aColorB, uMode);
     float vis = uFocusing<0.5 ? 1.0 : (sel>0.5 ? 1.4 : 0.05);
     vA = aAlpha*vis*(1.0 + hov*0.45); vL = position;
-    vec3 wp = aOffset + position*aScale*(1.0+0.5*prox + hov*0.3);
+    // larger, more-overlapping blobs read as a soft continuous mass (less pointillist)
+    vec3 wp = aOffset + position*aScale*(1.32+0.4*prox + hov*0.3);
     gl_Position = projectionMatrix*modelViewMatrix*vec4(wp,1.0);
   }`;
 const FRAG=`precision highp float;
@@ -73,7 +74,7 @@ const FRAG=`precision highp float;
   varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL; varying float vAD;
   void main(){
     if(uClip>0.5 && vAD < uCurDepth - 0.001) discard;
-    float edge=0.5+0.5*pow(clamp(vL.z*0.5+0.5,0.0,1.0),1.5);
+    float edge=0.66+0.34*clamp(vL.z*0.5+0.5,0.0,1.0);   // gentler shade -> softer, less hard-lit
     gl_FragColor=vec4(vColor*vHi*edge*vA*uOpacity, 1.0);
   }`;
 
@@ -148,9 +149,9 @@ export function makeStructures(){
     const stride=Math.max(2, Math.floor(det.length/12));
     for(let i=0;i<det.length;i++){
       const [lat,lon,depth,scale]=det[i];
-      add(lat,lon,depth,scale,0.55,fi,aCol,bCol);                 // raw-resolution detail
+      add(lat,lon,depth,scale,0.42,fi,aCol,bCol);                 // raw-resolution detail (softer)
       if(i%stride===0){                                           // sparse low-res cluster blob
-        const p=add(lat,lon,depth,bigR,0.26,fi,aCol,bCol);
+        const p=add(lat,lon,depth,bigR,0.28,fi,aCol,bCol);
         const pr=new THREE.Mesh(proxyGeo,proxyMat); pr.position.copy(p); pr.scale.setScalar(bigR*1.15);
         pr.userData={feature:f}; pr.updateMatrixWorld(); pickProxies.push(pr);
       }
@@ -160,7 +161,7 @@ export function makeStructures(){
     fi++;
   }
 
-  const base=new THREE.IcosahedronGeometry(1,1);
+  const base=new THREE.IcosahedronGeometry(1,2);   // rounder blobs (smoother, softer silhouettes)
   const g=new THREE.InstancedBufferGeometry();
   g.index=base.index; g.setAttribute('position', base.attributes.position);
   g.setAttribute('aOffset', new THREE.InstancedBufferAttribute(new Float32Array(off),3));
