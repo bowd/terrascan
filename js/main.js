@@ -61,7 +61,7 @@ const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
   showStruct:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
   showBorders:false, showMarkers:true, showFoot:false, showExp:false, spin:true,
-  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'synth', drillNav:false, cutaway:false, reliefPeel:false,
+  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'synth', drillNav:false, cutaway:false, reliefPeel:true,
 };
 // drill-zoom navigation "tape": waypoints of {orbit target, camera position}
 let tape=[], navIdx=0, navCam=null, navTarget=null;
@@ -80,7 +80,7 @@ const BAND_NARROW=35, BAND_WIDE=640, BAND_VREF=720; // km band width vs descent 
 const DIAL_RANGE={ reliefOpacity:[0,1], reliefBright:[0.6,1.8], coastOpacity:[0,0.9],
   scanStrength:[0,1], scanGain:[0.4,1.8], scanFloor:[0,0.5],
   modelGain:[0,2], modelHaze:[0,1], bodyOpacity:[0,1.2], focusBand:[0.008,0.12] };
-const dials={ reliefOpacity:0.72, reliefBright:1.12, coastOpacity:0.42,
+const dials={ reliefOpacity:0.88, reliefBright:1.12, coastOpacity:0.42,
   scanStrength:0.58, scanGain:1.0, scanFloor:0.16,
   modelGain:1.0, modelHaze:0.62, bodyOpacity:0.9, focusBand:0.03 };
 function applyDial(name,v){ dials[name]=v;
@@ -144,14 +144,15 @@ function syncClusterFromUI(){                             // adopt the sliders' 
     clusterParams[s.dataset.clus]=v; });
   reflectClusterReadouts();
 }
-function applyPeel(){                                     // in peel mode the relief is the subject; interior steps back
+function applyPeel(){                                     // peel: bring the surface to the FRONT; model stays visible behind it
   const on=state.reliefPeel;
-  if(scan) scan.mesh.visible      = on ? false : state.showScan;
-  if(structures) structures.group.visible = on ? false : (state.source==='real' ? false : state.showStruct);
-  if(dataBodies) dataBodies.group.visible  = on ? false : (state.source==='real');
-  if(coastObj) coastObj.visible   = on ? false : state.showCoast;   // coastlines just clutter the 3-D relief
-  if(gratObj)  gratObj.visible    = on ? false : state.showCoast;
-  // (markers/borders stay; theory is suppressed in the render loop while peeling)
+  if(relief){ relief.mesh.renderOrder = on?6:1; relief.water.renderOrder = on?6.05:2; }
+  // keep the rest of the model present — you see it through the translucent surface and the cut
+  if(scan) scan.mesh.visible      = state.showScan;
+  if(structures) structures.group.visible = (state.source==='real') ? false : state.showStruct;
+  if(dataBodies) dataBodies.group.visible  = (state.source==='real');
+  if(coastObj) coastObj.visible   = state.showCoast;
+  if(gratObj)  gratObj.visible    = state.showCoast;
 }
 function applyCutaway(){                                  // drop everything shallower than the current depth
   const on=state.cutaway;
@@ -216,7 +217,9 @@ async function init(){
   if(!seen) ui.guide(true); // show the intro once; the ⓘ button reopens it
 
   scanField.update(0);
-  setDepth(0);
+  // default to Relief-peel: open above the peaks and let the relief be the subject
+  ui.reliefAxis(true); relief.setPeel(true); applyPeel();
+  setDepth(-ELEV_TOP*0.55);
   initPicking();
   onResize();
   window.addEventListener('resize', onResize);
@@ -549,7 +552,9 @@ function animate(){
   velEMA += (instV-velEMA)*Math.min(1, dt*3.5);
   const bandKm=BAND_NARROW + (BAND_WIDE-BAND_NARROW)*smooth01(velEMA/BAND_VREF);
   const bandFrac=bandKm/EARTH_RADIUS;
-  if(dataBodies) dataBodies.setBand(bandFrac);
+  // wire decay is depth-based (fixed scale) so it doesn't flare/thin with scroll speed;
+  // the solid strategies keep the velocity-coupled band
+  if(dataBodies) dataBodies.setBand(clusterParams.strategy==='wire' ? 0.05 : bandFrac);
   if(ui) ui.bandReadout(`band ≈ ${Math.round(bandKm)} km wide${state.cutaway?'  ·  cutaway':''}`);
 
   // throttled scan rebuild
@@ -578,7 +583,7 @@ function animate(){
   // Where coverage collapses (the deep core), the blurry estimate brightens to take over.
   const fillIn=1-THREE.MathUtils.smoothstep(scanField?scanField.coverageMean:0.4, 0.05, 0.30);
   pipeline.render(theoryScene, scanScene, camera, {
-    showTheory:state.showTheory && !state.reliefPeel, showScan:true,
+    showTheory:state.showTheory, showScan:true,
     blur:dials.modelHaze,
     theoryIntensity:((state.showScan ? 0.32+fillIn*0.5 : 0.74)+dials.modelHaze*0.12)*dials.modelGain,
   });

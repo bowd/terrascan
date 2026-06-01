@@ -63,11 +63,12 @@ export function makeReliefEarth(){
         // emphasise the freshly-cut surface: a bright band right at the cut radius
         float cutBand = (uCutR<${NOCUT.toFixed(1)}) ? smoothstep(uCutR-0.006, uCutR, vR) : 0.0;
         col += vec3(0.5,0.72,0.95)*cutBand*0.7;
-        // opacity: in peel mode the current surface is STRONG; land solid, ocean faint
-        float aLand = mix(0.62, 0.94, uPeel);
-        float aOcean= mix(0.50, 0.34, uPeel);
-        float a = (land?aLand:aOcean) * uOpacity * (0.34+0.66*ndv);
-        a = max(a, cutBand*0.9*uOpacity);
+        // opacity: the surface reads strongly by default; peel makes the cut face near-solid.
+        // land = measured (solid), ocean floor = estimated (a bit lighter but still present)
+        float aLand = mix(0.82, 1.0, uPeel);
+        float aOcean= mix(0.62, 0.55, uPeel);
+        float a = (land?aLand:aOcean) * uOpacity * (0.62+0.38*ndv);
+        a = max(a, cutBand*0.95*uOpacity);
         gl_FragColor=vec4(col, a);
       }`,
   });
