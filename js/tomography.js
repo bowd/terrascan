@@ -21,6 +21,16 @@ export const CATEGORY = {
 };
 const CAT_BY_ID = Object.values(CATEGORY).sort((a,b)=>a.id-b.id);
 
+// plain-language meaning + representative PUBLIC sources, per feature type
+export const TYPE_INFO = {
+  slab:  {label:'subducted slab',        meaning:'Cold, dense former ocean floor sinking through the mantle. Seismic waves run FAST through it because cold rock is stiffer — that fastness is how we spot it; the sinking is inferred.', src:'P-wave tomography: LLNL-G3Dv3, UU-P07, MITP08 · Atlas of the Underworld'},
+  llsvp: {label:'LLSVP — hot pile',      meaning:'A continent-sized pile of hot, slow (probably chemically distinct) rock resting on the core. One under Africa, one under the Pacific.', src:'S40RTS, SEMUCB-WM1, SP12RTS · IRIS EMC'},
+  ulvz:  {label:'ultra-low-velocity zone',meaning:'A thin, extreme patch on the core boundary — most likely partial melt — usually hugging the edge of a hot pile.', src:'ScS / SPdKS / PcP wave studies · SEMUCB-WM1'},
+  plume: {label:'mantle plume',          meaning:'A narrow column of hot, buoyant rock rising toward the surface and feeding a volcanic hotspot. Slow because it is hot; the rising is inferred from that.', src:'Full-waveform SEMUCB-WM1 (French & Romanowicz 2015)'},
+  craton:{label:'cratonic root',         meaning:'The ancient, cold, deep keel beneath an old continent. Fast because it is cold and dehydrated; essentially fixed, not flowing.', src:'Surface-wave tomography: SAVANI, S362ANI, SEMUCB-WM1'},
+  ridge: {label:'ridge / rift',          meaning:'Shallow hot upwelling beneath a spreading ridge or continental rift. Slow because it is hot and partly molten.', src:'Surface-wave & ambient-noise tomography'},
+};
+
 // anomaly: 'fast' (cold/sinking, blue) or 'slow' (hot/rising, red)
 // lat/lon = centre °, latExt/lonExt = ~1σ half-width °, dTop/dBot = depth km,
 // mag = |ΔVs| %, conf = how confidently it is resolved (0..1)

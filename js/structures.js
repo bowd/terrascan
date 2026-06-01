@@ -1,116 +1,102 @@
-// structures.js — interpolate the point/surface features into translucent 3D
-// bodies inside the volume, so you read the interior as anatomy rather than a
-// flat slice: plumes = rising conduits, slabs = dipping sheets, LLSVPs = basal
-// piles, cratons = shallow keels, ULVZs = patches on the core. One instanced
-// blob cloud; the band at the current depth lights up as you dive.
+// structures.js — each feature as ONE coherent, fuzzy 3D body (a noise-deformed
+// ellipsoid with a soft glowing outline) rather than a scatter of points. Each
+// mesh is pickable (carries its feature in userData) so it can be hovered and
+// "extracted". The body brightens while the current depth is inside its range.
 import * as THREE from 'three';
 import { FEATURES, CATEGORY } from './tomography.js';
 import { EARTH_RADIUS, depthToUnit } from './earthModel.js';
 import { latLonToVec3 } from './geo.js';
 
-const ANOM = { fast:[0.42,0.62,1.0], slow:[1.0,0.36,0.28] };
+const D2R = Math.PI/180;
+const ANOM = { fast:[0.45,0.64,1.0], slow:[1.0,0.42,0.32] };
 const catRGB = (id)=>{ const c=new THREE.Color(Object.values(CATEGORY).sort((a,b)=>a.id-b.id)[id].color); return [c.r,c.g,c.b]; };
 
-function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
-
-// sample a feature's 3D envelope into points {lat,lon,depth,scale,alpha}
-function sampleFeature(f, rnd){
-  const pts=[], span=f.dBot-f.dTop;
-  const push=(lat,lon,depth,scale,alpha)=>pts.push([lat,lon,depth,scale,alpha]);
-  if(f.type==='plume'){
-    const N=36;
-    for(let i=0;i<N;i++){ const t=i/(N-1), depth=f.dBot+(f.dTop-f.dBot)*t;
-      push(f.lat+Math.cos(t*7+f.lat)*1.5, f.lon+Math.sin(t*8+f.lon)*1.6, depth, 0.015+0.012*t, 0.55); }
-    for(let i=0;i<12;i++){ const a=rnd()*6.283, rr=rnd()*f.lonExt*0.9;       // mushroom head
-      push(f.lat+Math.sin(a)*rr*0.6, f.lon+Math.cos(a)*rr, f.dTop+span*0.05*rnd(), 0.022, 0.42); }
-  } else if(f.type==='slab'){
-    const strikeLat=f.latExt>=f.lonExt, along=20, down=8;
-    for(let a=0;a<along;a++) for(let d=0;d<down;d++){
-      const ta=a/(along-1)*2-1, td=d/(down-1), depth=f.dTop+span*td;
-      let lat=f.lat, lon=f.lon;
-      if(strikeLat){ lat+=ta*f.latExt; lon+=(td-0.4)*f.lonExt*1.3; }
-      else { lon+=ta*f.lonExt; lat+=(td-0.4)*f.latExt*1.3; }
-      push(lat+(rnd()-0.5)*1.6, lon+(rnd()-0.5)*1.6, depth, 0.02, 0.42); }
-  } else if(f.type==='llsvp'){
-    const N= span>1500?240:120;
-    for(let i=0;i<N;i++){ let x,y,z,r2; do{x=rnd()*2-1;y=rnd()*2-1;z=rnd()*2-1;r2=x*x+y*y+z*z;}while(r2>1);
-      const depth=Math.max(f.dTop, f.dBot-Math.abs(z)*span);            // dense at the base
-      push(f.lat+x*f.latExt, f.lon+y*f.lonExt, depth, 0.038, 0.32); }
-  } else if(f.type==='ulvz'){
-    for(let i=0;i<16;i++){ const a=rnd()*6.283, rr=rnd();
-      push(f.lat+Math.sin(a)*rr*f.latExt, f.lon+Math.cos(a)*rr*f.lonExt, f.dBot-rnd()*span, 0.024, 0.62); }
-  } else if(f.type==='craton'){
-    for(let i=0;i<72;i++){ const a=rnd()*6.283, rr=Math.sqrt(rnd());
-      push(f.lat+Math.sin(a)*rr*f.latExt, f.lon+Math.cos(a)*rr*f.lonExt, f.dTop+span*rnd()*0.92, 0.022, 0.34); }
-  } else if(f.type==='ridge'){
-    const strikeLat=f.latExt>=f.lonExt;
-    for(let i=0;i<32;i++){ const t=i/31*2-1;
-      const lat=f.lat+(strikeLat?t*f.latExt:(rnd()-0.5)*f.lonExt);
-      const lon=f.lon+(strikeLat?(rnd()-0.5)*f.lonExt:t*f.lonExt);
-      push(lat, lon, f.dTop+span*rnd()*0.85, 0.015, 0.42); }
-  } else { push(f.lat,f.lon,(f.dTop+f.dBot)/2,0.02,0.4); }
-  return pts;
+function h3(x,y,z){ let n=Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453; return n-Math.floor(n); }
+function noise3(x,y,z){
+  const xi=Math.floor(x),yi=Math.floor(y),zi=Math.floor(z), xf=x-xi,yf=y-yi,zf=z-zi;
+  const u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf),w=zf*zf*(3-2*zf), L=(a,b,t)=>a+(b-a)*t;
+  return L(L(L(h3(xi,yi,zi),h3(xi+1,yi,zi),u),L(h3(xi,yi+1,zi),h3(xi+1,yi+1,zi),u),v),
+           L(L(h3(xi,yi,zi+1),h3(xi+1,yi,zi+1),u),L(h3(xi,yi+1,zi+1),h3(xi+1,yi+1,zi+1),u),v),w);
 }
 
+const VERT=`
+  varying vec3 vN; varying vec3 vV;
+  void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0);
+    vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz);
+    gl_Position=projectionMatrix*mv; }`;
+const FRAG=`
+  precision highp float;
+  varying vec3 vN; varying vec3 vV;
+  uniform vec3 uColorA,uColorB; uniform float uMode,uHi,uConf,uSel,uFade,uOpacity;
+  void main(){
+    float ndv=clamp(dot(normalize(vN),normalize(vV)),0.0,1.0);
+    float fres=pow(1.0-ndv,2.2);
+    vec3 col=mix(uColorA,uColorB,uMode);
+    col*=(0.45+0.6*uHi);
+    col+=col*fres*0.9;                  // glowing soft rim => fuzzy outline
+    float a=(0.12+0.40*ndv)*uHi*uFade*uOpacity;
+    a*=(0.45+0.55*uConf);               // poorly-constrained bodies read fainter
+    a+=uSel*fres*0.6;                   // selected: bright rim
+    col*=(1.0+uSel*0.5);
+    gl_FragColor=vec4(col,a);
+  }`;
+
 export function makeStructures(){
-  const rnd=mulberry32(20260601);
-  const off=[], scl=[], ca=[], cb=[], dep=[], alp=[];
+  const base=new THREE.IcosahedronGeometry(1,3);
+  const group=new THREE.Group(); group.renderOrder=4;
+  const meshes=[]; let fi=0;
+
   for(const f of FEATURES){
+    fi++;
+    const midD=(f.dTop+f.dBot)/2, rC=depthToUnit(midD);
+    const center=latLonToVec3(f.lat,f.lon,rC);
+    const maxE=Math.max(f.latExt,f.lonExt), minE=Math.min(f.latExt,f.lonExt);
+    let sx=maxE*D2R*rC, sz=minE*D2R*rC, sy=Math.max(0.02,(f.dBot-f.dTop)/2/EARTH_RADIUS);
+    let lump=0.32, tilt=0;
+    if(f.type==='plume'){ sx=sz=Math.max(0.03,f.lonExt*D2R*rC*1.1); sy=Math.max(sy,0.12); lump=0.22; }
+    else if(f.type==='slab'){ sz*=0.5; sy=Math.max(sy,0.05); lump=0.28; tilt=0.5; }
+    else if(f.type==='llsvp'){ sy=Math.max(sy,0.10); lump=0.42; }
+    else if(f.type==='ulvz'){ sy=Math.max(0.02,sy*0.6); lump=0.30; }
+    else if(f.type==='craton'){ sy=Math.max(0.02,sy*0.7); lump=0.34; }
+    else if(f.type==='ridge'){ sz*=0.4; lump=0.30; }
+
+    const g=base.clone(), pos=g.attributes.position, seed=fi*3.7;
+    for(let i=0;i<pos.count;i++){ const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
+      const d=1.0+lump*(noise3(x*1.6+seed,y*1.6+seed,z*1.6+seed)-0.5)*2.0
+                 +0.12*(noise3(x*3.4+seed,y*3.4,z*3.4)-0.5)*2.0;
+      pos.setXYZ(i,x*d,y*d,z*d); }
+    g.computeVertexNormals();
+
     const aCol=ANOM[f.anomaly], bCol=catRGB(CATEGORY[f.type].id);
-    for(const [lat,lon,depth,scale,alpha] of sampleFeature(f,rnd)){
-      const p=latLonToVec3(lat,lon, depthToUnit(depth));
-      off.push(p.x,p.y,p.z); scl.push(scale);
-      ca.push(aCol[0],aCol[1],aCol[2]); cb.push(bCol[0],bCol[1],bCol[2]);
-      dep.push(depth/EARTH_RADIUS); alp.push(alpha*(0.55+0.55*(f.conf||0.5)));
-    }
+    const mat=new THREE.ShaderMaterial({ transparent:true, depthTest:false, depthWrite:false,
+      side:THREE.DoubleSide, blending:THREE.NormalBlending, vertexShader:VERT, fragmentShader:FRAG,
+      uniforms:{ uColorA:{value:new THREE.Vector3(...aCol)}, uColorB:{value:new THREE.Vector3(...bCol)},
+        uMode:{value:0}, uHi:{value:0.5}, uConf:{value:f.conf||0.5}, uSel:{value:0}, uFade:{value:1}, uOpacity:{value:1} } });
+
+    const mesh=new THREE.Mesh(g,mat);
+    mesh.scale.set(sx,sy,sz);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), center.clone().normalize());
+    if(tilt){ const ax=new THREE.Vector3(1,0,0).applyQuaternion(mesh.quaternion); mesh.rotateOnWorldAxis(ax,tilt); }
+    mesh.position.copy(center);
+    mesh.renderOrder=4;
+    mesh.userData={ feature:f, center:center.clone(), radius:Math.max(sx,sy,sz) };
+    group.add(mesh); meshes.push(mesh);
   }
-  const count=scl.length;
 
-  const base=new THREE.IcosahedronGeometry(1,1);
-  const geo=new THREE.InstancedBufferGeometry();
-  geo.index=base.index;
-  geo.setAttribute('position', base.attributes.position);
-  geo.setAttribute('aOffset', new THREE.InstancedBufferAttribute(new Float32Array(off),3));
-  geo.setAttribute('aScale',  new THREE.InstancedBufferAttribute(new Float32Array(scl),1));
-  geo.setAttribute('aColorA', new THREE.InstancedBufferAttribute(new Float32Array(ca),3));
-  geo.setAttribute('aColorB', new THREE.InstancedBufferAttribute(new Float32Array(cb),3));
-  geo.setAttribute('aDepth',  new THREE.InstancedBufferAttribute(new Float32Array(dep),1));
-  geo.setAttribute('aAlpha',  new THREE.InstancedBufferAttribute(new Float32Array(alp),1));
-  geo.instanceCount=count;
+  function setCurDepth(d){
+    for(const m of meshes){ const f=m.userData.feature, feather=250;
+      let hi=0.30;
+      if(d>f.dTop-feather && d<f.dBot+feather){
+        const a=Math.min(1,(d-(f.dTop-feather))/feather), b=Math.min(1,((f.dBot+feather)-d)/feather);
+        hi=0.30+0.85*Math.min(a,b);
+      }
+      m.material.uniforms.uHi.value=hi; }
+  }
+  const setMode=(mo)=>meshes.forEach(m=>m.material.uniforms.uMode.value=mo);
+  const setOpacity=(o)=>meshes.forEach(m=>m.material.uniforms.uOpacity.value=o);
+  function focus(sel){ for(const m of meshes){
+    m.material.uniforms.uSel.value = m===sel?1:0;
+    m.material.uniforms.uFade.value = sel ? (m===sel?1:0.07) : 1; } }
 
-  const mat=new THREE.RawShaderMaterial({
-    transparent:true, depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending,
-    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.022}, uMode:{value:0}, uOpacity:{value:1} },
-    vertexShader:`precision highp float;
-      uniform mat4 modelViewMatrix, projectionMatrix;
-      uniform float uCurDepth, uFocus, uMode;
-      attribute vec3 position, aOffset, aColorA, aColorB;
-      attribute float aScale, aDepth, aAlpha;
-      varying vec3 vColor; varying float vHi; varying float vAlpha; varying vec3 vL;
-      void main(){
-        float prox = 1.0 - smoothstep(0.0, uFocus, abs(aDepth-uCurDepth));
-        vHi = 0.24 + 1.10*prox;   // off-band bodies fade to faint ghosts; the current depth blazes
-        vColor = mix(aColorA, aColorB, uMode);
-        vAlpha = aAlpha; vL = position;
-        vec3 wp = aOffset + position*aScale*(1.0+0.5*prox);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(wp,1.0);
-      }`,
-    fragmentShader:`precision highp float;
-      uniform float uOpacity;
-      varying vec3 vColor; varying float vHi; varying float vAlpha; varying vec3 vL;
-      void main(){
-        float edge = 0.55 + 0.45*pow(clamp(vL.z*0.5+0.5,0.0,1.0),1.5); // faux lighting
-        gl_FragColor = vec4(vColor*vHi*edge*vAlpha*uOpacity, 1.0);     // additive
-      }`,
-  });
-
-  const mesh=new THREE.Mesh(geo, mat);
-  mesh.frustumCulled=false;
-  mesh.renderOrder=4;
-  return {
-    mesh,
-    setCurDepth:(u)=>mat.uniforms.uCurDepth.value=u,
-    setMode:(m)=>mat.uniforms.uMode.value=m,
-    setOpacity:(o)=>mat.uniforms.uOpacity.value=o,
-  };
+  return { group, meshes, setCurDepth, setMode, setOpacity, focus };
 }

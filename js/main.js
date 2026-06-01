@@ -4,7 +4,7 @@ import { OrbitControls } from '../vendor/OrbitControls.js';
 import {
   EARTH_RADIUS, premAt, geoLayerAt, depthToUnit, tempUncertainty,
 } from './earthModel.js';
-import { makeScanField, activeFeatures, dominantFeatures } from './tomography.js';
+import { makeScanField, activeFeatures, dominantFeatures, TYPE_INFO } from './tomography.js';
 import { loadGeo, rasterizeLand, buildCoastlines, buildGraticule, latLonToVec3 } from './geo.js';
 import { makeTheoryShells, makeScanShell } from './shells.js';
 import { makeStructures } from './structures.js';
@@ -53,10 +53,12 @@ const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
   showStruct:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
   showBorders:false, showMarkers:true, spin:true,
-  diving:false, touring:false, contextLost:false,
+  diving:false, touring:false, contextLost:false, focused:null,
 };
 
 let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj;
+let earthWire, hovered=null, glideCam=null, glideTarget=null, savedCam=null, savedTarget=null;
+const raycaster=new THREE.Raycaster(), ptr=new THREE.Vector2(); let downPos=null;
 const DOT_GEO=new THREE.SphereGeometry(0.012, 12, 12);
 
 // ---------- boot ----------
@@ -74,12 +76,18 @@ async function init(){
   scanScene.add(scan.mesh);
 
   structures=makeStructures();
-  structures.setOpacity(0.82);
-  scanScene.add(structures.mesh);
+  structures.setOpacity(0.9);
+  scanScene.add(structures.group);
 
   relief=makeReliefEarth();
   relief.setOpacity(state.reliefOpacity); relief.mesh.visible=state.showRelief;
   scanScene.add(relief.mesh);
+
+  // faint globe outline shown only while a feature is "extracted", for context
+  earthWire=new THREE.LineSegments(
+    new THREE.WireframeGeometry(new THREE.SphereGeometry(1, 30, 18)),
+    new THREE.LineBasicMaterial({color:0x3b5f86, transparent:true, opacity:0.22, depthTest:false, depthWrite:false}));
+  earthWire.visible=false; earthWire.renderOrder=5; scanScene.add(earthWire);
 
   gratObj=buildGraticule(0.999); scanScene.add(gratObj);
   coastObj=buildCoastlines(coastlines, 1.001); scanScene.add(coastObj);
@@ -97,6 +105,7 @@ async function init(){
 
   scanField.update(0);
   setDepth(0);
+  initPicking();
   onResize();
   window.addEventListener('resize', onResize);
   window.addEventListener('keydown', onKey);
@@ -131,7 +140,7 @@ const handlers={
   onColorMode:(m)=>{ state.mode=(m==='feature')?1:0; scan.setMode(state.mode); structures.setMode(state.mode); ui.colorMode(m);
     refreshFeaturePanel(); },
   onToggle:(name,v)=>{
-    if(name==='struct'){ state.showStruct=v; structures.mesh.visible=v; }
+    if(name==='struct'){ state.showStruct=v; structures.group.visible=v; }
     else if(name==='scan'){ state.showScan=v; scan.mesh.visible=v; }
     else if(name==='infer'){ state.showInfer=v; scan.setInfer(v?1:0); }
     else if(name==='theory') state.showTheory=v;
@@ -150,6 +159,7 @@ const handlers={
   onStep:(dz)=>{ stopTour(); stopDive(); setDepth(state.depth+dz); },
   onTour:()=>{ state.touring?stopTour():startTour(); },
   onTourStop:()=>stopTour(),
+  onExitFocus:()=>exitFocus(),
 };
 
 // ---------- depth ----------
@@ -236,6 +246,49 @@ function tourChapter(i){
   tourTimer=setTimeout(()=>{ if(i+1<TOUR.length) tourChapter(i+1); else stopTour(); }, 8500);
 }
 
+// ---------- picking + extract / focus ----------
+function pickAt(cx,cy){
+  const r=renderer.domElement.getBoundingClientRect();
+  ptr.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
+  raycaster.setFromCamera(ptr,camera);
+  const hit=raycaster.intersectObjects(structures.meshes,false);
+  return hit.length?hit[0].object:null;
+}
+function initPicking(){
+  const el=renderer.domElement;
+  el.addEventListener('pointerdown',e=>{ downPos={x:e.clientX,y:e.clientY}; });
+  el.addEventListener('pointermove',e=>{
+    if(state.focused || !structures.group.visible){ return; }
+    const m=pickAt(e.clientX,e.clientY); hovered=m;
+    if(m){ ui.tip(m.userData.feature, e.clientX, e.clientY); el.style.cursor='pointer'; }
+    else { ui.tip(null); el.style.cursor=''; }
+  });
+  el.addEventListener('pointerleave',()=>ui.tip(null));
+  el.addEventListener('click',e=>{
+    if(downPos && Math.hypot(e.clientX-downPos.x,e.clientY-downPos.y)>6) return; // was a drag
+    if(state.focused || !structures.group.visible) return;
+    const m=pickAt(e.clientX,e.clientY); if(m) enterFocus(m);
+  });
+}
+function enterFocus(m){
+  stopTour(); stopDive(); ui.tip(null);
+  state.focused=m; structures.focus(m); earthWire.visible=true; controls.autoRotate=false;
+  scan.mesh.visible=false; markerGroup.visible=false; relief.setOpacity(0.10); // declutter around the isolated body
+  savedCam=camera.position.clone(); savedTarget=controls.target.clone();
+  const c=m.userData.center, dist=Math.max(0.55, Math.min(3.0, m.userData.radius*5.5));
+  const dir=camera.position.clone().sub(controls.target).normalize();
+  glideTarget=c.clone(); glideCam=c.clone().add(dir.multiplyScalar(dist));
+  ui.focusPanel(m.userData.feature);
+}
+function exitFocus(){
+  if(!state.focused) return;
+  structures.focus(null); earthWire.visible=false; ui.focusPanel(null);
+  scan.mesh.visible=state.showScan; markerGroup.visible=state.showMarkers; relief.setOpacity(state.reliefOpacity);
+  glideTarget=savedTarget?savedTarget.clone():new THREE.Vector3();
+  glideCam=savedCam?savedCam.clone():new THREE.Vector3(0.2,0.9,3.0);
+  state.focused=null; controls.autoRotate=state.spin;
+}
+
 // ---------- loop ----------
 const clock=new THREE.Clock();
 function animate(){
@@ -261,6 +314,11 @@ function animate(){
     ui.readout({...lastReadout, covPct:scanField.coverageMean*100});
   }
   if(state.touring && tourCamPos) camera.position.lerp(tourCamPos, Math.min(1, dt*1.7));
+  if(glideCam){
+    camera.position.lerp(glideCam, Math.min(1,dt*2.4));
+    controls.target.lerp(glideTarget, Math.min(1,dt*2.4));
+    if(camera.position.distanceTo(glideCam)<0.03){ controls.target.copy(glideTarget); glideCam=null; glideTarget=null; }
+  }
 
   theoryShells.userData.tick(t);
   controls.update();
@@ -300,6 +358,7 @@ function onKey(e){
   if(e.key==='ArrowDown'){ stopTour(); stopDive(); setDepth(state.depth+Math.max(20,EARTH_RADIUS*0.01)); e.preventDefault(); }
   else if(e.key==='ArrowUp'){ stopTour(); stopDive(); setDepth(state.depth-Math.max(20,EARTH_RADIUS*0.01)); e.preventDefault(); }
   else if(e.code==='Space'){ handlers.onDive(); e.preventDefault(); }
+  else if(e.key==='Escape'){ exitFocus(); }
 }
 function fail(msg){
   const ov=document.getElementById('loading');

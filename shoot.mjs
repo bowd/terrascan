@@ -75,6 +75,17 @@ await setChk('#t-struct', false); await setDepth(1500); await page.waitForTimeou
 await page.screenshot({path:'shots/13-theory-gaps.png'});
 await setChk('#t-struct', true);
 
+// hover + extract test
+await setDepth(1800); await page.waitForTimeout(1200);
+const hx=344+(1500-344)/2, hy=460;
+await page.mouse.move(hx,hy); await page.waitForTimeout(350);
+await page.screenshot({path:'shots/16-hover.png'});
+console.log('tip visible:', await page.evaluate(()=>!document.querySelector('#tip').classList.contains('hidden')));
+await page.mouse.move(hx,hy); await page.mouse.down(); await page.mouse.up();
+await page.waitForTimeout(1700); await page.screenshot({path:'shots/17-focus.png'});
+console.log('focus:', await page.evaluate(()=>(!document.querySelector('#focus').classList.contains('hidden'))+' / '+document.querySelector('#focus-name').textContent));
+await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+
 console.log('--- PAGE ERRORS ---'); console.log(errors.length?errors.join('\n'):'(none)');
 console.log('--- CONSOLE errors/warnings ---');
 console.log(logs.filter(l=>/error|warn|fail|exception/i.test(l)).slice(0,30).join('\n')||'(none)');

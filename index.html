@@ -72,13 +72,14 @@
       </div>
 
       <div id="legend-dvs" class="legend">
+        <div class="legend-lead">Colour = how fast seismic waves travel = the rock's <b>temperature &amp; stiffness</b>. Motion (sinking / rising) is <em>inferred</em> from that — it is not a direct movement reading.</div>
         <div class="legend-bar dvs-bar"></div>
-        <div class="legend-ends"><span>slower</span><span>average</span><span>faster</span></div>
+        <div class="legend-ends"><span>slow / hot</span><span>average</span><span>fast / cold</span></div>
         <ul class="legend-key">
-          <li><i class="sw hot"></i><b>Red = slower</b> — hotter, softer rock that is <b>rising</b> (plumes, hot piles)</li>
-          <li><i class="sw cold"></i><b>Blue = faster</b> — colder, stiffer rock that is <b>sinking</b> (old sea floor / slabs)</li>
-          <li><i class="sw faint"></i><b>Faint = barely scanned</b> — coverage is thin here, so the blurry model behind shows through</li>
-          <li><i class="sw hatch"></i><b>Hatched = no data</b> — theory's expectation where there's no scan (inferred, not measured)</li>
+          <li><i class="sw cold"></i><b>Blue = fast</b> → cold, stiff rock, usually <b>sinking</b> (slabs)</li>
+          <li><i class="sw hot"></i><b>Red = slow</b> → hot, soft rock, usually <b>rising</b> (plumes, piles)</li>
+          <li><i class="sw" style="background:#9aa6bd;box-shadow:none"></i><b>Neutral</b> = ordinary average mantle — measured, nothing unusual (not “static”)</li>
+          <li><i class="sw hatch"></i><b>Hatched / faint = no readings</b> — theory's guess only, not measured</li>
         </ul>
       </div>
 
@@ -162,7 +163,7 @@
       <div class="guide-two">
         <div class="g-card scan">
           <h4>① THE SCAN — sharp</h4>
-          <p>What earthquakes actually reveal: how fast seismic waves travel through the rock at this depth, drawn as a deviation from average.</p>
+          <p>What earthquakes reveal: how fast seismic waves travel at this depth — i.e. how <em>hot/cold &amp; stiff</em> the rock is. (Colour shows temperature, not motion; we <em>infer</em> sinking/rising from it.)</p>
           <p><span class="dot hot"></span><b>Red</b> = slower → hotter, softer, <b>rising</b><br>
              <span class="dot cold"></span><b>Blue</b> = faster → colder, stiffer, <b>sinking</b><br>
              <span class="dot faint"></span><b>Faint</b> = we've barely scanned here</p>
@@ -191,6 +192,23 @@
       <div id="data-body" class="data-body"><p class="muted">gathering sources…</p></div>
     </div>
   </div>
+
+  <!-- hover tooltip -->
+  <div id="tip" class="tip hidden"></div>
+
+  <!-- extracted-feature panel -->
+  <aside id="focus" class="focus-card hidden">
+    <button id="focus-back" class="btn">← back to the globe</button>
+    <span class="kicker" id="focus-type">—</span>
+    <h3 id="focus-name">—</h3>
+    <p id="focus-meaning">—</p>
+    <div class="focus-rows">
+      <div><span>depth</span><b id="focus-depth">—</b></div>
+      <div><span>signal</span><b id="focus-anom">—</b></div>
+    </div>
+    <div class="focus-src"><span class="kicker">DATA SOURCES</span><p id="focus-src">—</p></div>
+    <p class="focus-hint">isolated here, still in the Earth's frame — drag to orbit it · Esc or “back” to return</p>
+  </aside>
 
   <div id="loading" class="overlay">
     <div class="loading-core"></div>

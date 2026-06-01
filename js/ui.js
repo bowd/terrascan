@@ -1,6 +1,7 @@
 // ui.js — owns the left-rail DOM: depth controls, the scan legend, the readout
 // (with the colour↔baseline bridge), the guided intro, and the tour caption.
 import { GEO_LAYERS, EARTH_RADIUS, DEPTH_STOPS, sliderToDepth, depthToSlider } from './earthModel.js';
+import { TYPE_INFO } from './tomography.js';
 
 const $ = (s)=>document.querySelector(s);
 const ANOM = {fast:'#6f9bff', slow:'#ff6b5a'};
@@ -43,9 +44,10 @@ export function initControls(h){
   guide.addEventListener('click',e=>{if(e.target===guide)closeGuide();});
   $('#guide-tour').addEventListener('click',()=>{closeGuide();h.onTour();});
 
-  // tour
+  // tour + extract
   $('#tour-btn').addEventListener('click',h.onTour);
   $('#tour-stop').addEventListener('click',h.onTourStop);
+  $('#focus-back').addEventListener('click',h.onExitFocus);
 
   // data sources modal
   const data=$('#data');
@@ -83,6 +85,29 @@ export function initControls(h){
     },
     dataBody(html){ $('#data-body').innerHTML=html; },
     know(text){ $('#know').textContent=text; },
+    tip(f, x, y){
+      const el=$('#tip');
+      if(!f){ el.classList.add('hidden'); return; }
+      const ti=TYPE_INFO[f.type]||{};
+      el.innerHTML=`<b>${f.name}</b>`+
+        `<span class="tip-type">${ti.label||f.type} · ${f.anomaly==='fast'?'fast = cold':'slow = hot'}</span>`+
+        `<span class="tip-d">${f.dTop.toLocaleString()}–${f.dBot.toLocaleString()} km · click to isolate</span>`;
+      el.style.left=Math.min(window.innerWidth-232, x+15)+'px';
+      el.style.top=Math.min(window.innerHeight-70, y+15)+'px';
+      el.classList.remove('hidden');
+    },
+    focusPanel(f){
+      const el=$('#focus');
+      if(!f){ el.classList.add('hidden'); return; }
+      const ti=TYPE_INFO[f.type]||{};
+      $('#focus-type').textContent=ti.label||f.type;
+      $('#focus-name').textContent=f.name;
+      $('#focus-meaning').textContent=ti.meaning||'';
+      $('#focus-depth').textContent=f.dTop.toLocaleString()+'–'+f.dBot.toLocaleString()+' km';
+      $('#focus-anom').textContent= f.anomaly==='fast'?'fast → cold / sinking':'slow → hot / rising';
+      $('#focus-src').textContent=ti.src||'—';
+      el.classList.remove('hidden');
+    },
     readout(o){
       $('#ro-vs').textContent=o.vs; $('#ro-temp').textContent=o.temp;
       $('#ro-rho').textContent=o.rho; $('#ro-p').textContent=o.p;
