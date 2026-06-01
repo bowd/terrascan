@@ -251,34 +251,35 @@ function pickAt(cx,cy){
   const r=renderer.domElement.getBoundingClientRect();
   ptr.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
   raycaster.setFromCamera(ptr,camera);
-  const hit=raycaster.intersectObjects(structures.meshes,false);
-  return hit.length?hit[0].object:null;
+  const hit=raycaster.intersectObjects(structures.pickProxies,false);
+  return hit.length?hit[0].object.userData.feature:null;
 }
 function initPicking(){
   const el=renderer.domElement;
   el.addEventListener('pointerdown',e=>{ downPos={x:e.clientX,y:e.clientY}; });
   el.addEventListener('pointermove',e=>{
     if(state.focused || !structures.group.visible){ return; }
-    const m=pickAt(e.clientX,e.clientY); hovered=m;
-    if(m){ ui.tip(m.userData.feature, e.clientX, e.clientY); el.style.cursor='pointer'; }
+    const f=pickAt(e.clientX,e.clientY); hovered=f;
+    if(f){ ui.tip(f, e.clientX, e.clientY); el.style.cursor='pointer'; }
     else { ui.tip(null); el.style.cursor=''; }
   });
   el.addEventListener('pointerleave',()=>ui.tip(null));
   el.addEventListener('click',e=>{
     if(downPos && Math.hypot(e.clientX-downPos.x,e.clientY-downPos.y)>6) return; // was a drag
     if(state.focused || !structures.group.visible) return;
-    const m=pickAt(e.clientX,e.clientY); if(m) enterFocus(m);
+    const f=pickAt(e.clientX,e.clientY); if(f) enterFocus(f);
   });
 }
-function enterFocus(m){
+function enterFocus(f){
   stopTour(); stopDive(); ui.tip(null);
-  state.focused=m; structures.focus(m); earthWire.visible=true; controls.autoRotate=false;
+  const inf=structures.infoFor(f);
+  state.focused=f; structures.focus(f); earthWire.visible=true; controls.autoRotate=false;
   scan.mesh.visible=false; markerGroup.visible=false; relief.setOpacity(0.10); // declutter around the isolated body
   savedCam=camera.position.clone(); savedTarget=controls.target.clone();
-  const c=m.userData.center, dist=Math.max(0.55, Math.min(3.0, m.userData.radius*5.5));
+  const c=inf.center, dist=Math.max(0.55, Math.min(3.2, inf.radius*5.0));
   const dir=camera.position.clone().sub(controls.target).normalize();
   glideTarget=c.clone(); glideCam=c.clone().add(dir.multiplyScalar(dist));
-  ui.focusPanel(m.userData.feature);
+  ui.focusPanel(f);
 }
 function exitFocus(){
   if(!state.focused) return;
