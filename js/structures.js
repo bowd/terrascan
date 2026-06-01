@@ -54,8 +54,9 @@ const VERT=`precision highp float;
   uniform float uCurDepth,uFocus,uMode,uSelFeature,uFocusing,uHoverFeature;
   attribute vec3 position, aOffset, aColorA, aColorB;
   attribute float aScale, aDepth, aAlpha, aFeature;
-  varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL;
+  varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL; varying float vAD;
   void main(){
+    vAD = aDepth;
     float prox = 1.0 - smoothstep(0.0, uFocus, abs(aDepth-uCurDepth));
     float sel = (uFocusing>0.5 && abs(aFeature-uSelFeature)<0.5) ? 1.0 : 0.0;
     float hov = (abs(aFeature-uHoverFeature)<0.5) ? 1.0 : 0.0;   // body under the cursor
@@ -68,8 +69,10 @@ const VERT=`precision highp float;
   }`;
 const FRAG=`precision highp float;
   uniform float uOpacity;
-  varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL;
+  uniform float uClip, uCurDepth;
+  varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL; varying float vAD;
   void main(){
+    if(uClip>0.5 && vAD < uCurDepth - 0.001) discard;
     float edge=0.5+0.5*pow(clamp(vL.z*0.5+0.5,0.0,1.0),1.5);
     gl_FragColor=vec4(vColor*vHi*edge*vA*uOpacity, 1.0);
   }`;
@@ -172,7 +175,7 @@ export function makeStructures(){
   const mat=new THREE.RawShaderMaterial({ transparent:true, depthTest:false, depthWrite:false,
     blending:THREE.AdditiveBlending, vertexShader:VERT, fragmentShader:FRAG,
     uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.03}, uMode:{value:0}, uOpacity:{value:1},
-      uSelFeature:{value:-1}, uFocusing:{value:0}, uHoverFeature:{value:-1} } });
+      uSelFeature:{value:-1}, uFocusing:{value:0}, uHoverFeature:{value:-1}, uClip:{value:0} } });
 
   const mesh=new THREE.Mesh(g,mat); mesh.frustumCulled=false; mesh.renderOrder=4;
   const foot=buildFootprints(footData);
@@ -180,6 +183,7 @@ export function makeStructures(){
   return {
     group:mesh, pickProxies, footGroup:foot.group, setFootHover:foot.setFootHover, setFootSolo:foot.setFootSolo,
     setCurDepth:(u)=>mat.uniforms.uCurDepth.value=u,
+    setCutaway:(on)=>mat.uniforms.uClip.value = on?1:0,
     setMode:(m)=>mat.uniforms.uMode.value=m,
     setOpacity:(o)=>mat.uniforms.uOpacity.value=o,
     setFocusBand:(v)=>mat.uniforms.uFocus.value=v,

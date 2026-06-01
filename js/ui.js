@@ -27,6 +27,16 @@ export function initControls(h){
   tog('#t-struct','struct'); tog('#t-scan','scan'); tog('#t-infer','infer'); tog('#t-theory','theory');
   tog('#t-relief','relief'); tog('#t-coast','coast'); tog('#t-borders','borders');
   tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-exp','exp'); tog('#t-spin','spin'); tog('#t-drill','drill');
+  tog('#t-cut','cutaway'); tog('#t-normalize','normalize');
+
+  // data pipeline — model inputs, clustering, viz strategy
+  $('#t-all-s').addEventListener('change',e=>h.onModelKind&&h.onModelKind('S',e.target.checked));
+  $('#t-all-p').addEventListener('change',e=>h.onModelKind&&h.onModelKind('P',e.target.checked));
+  document.querySelectorAll('.clus').forEach(s=>s.addEventListener('input',()=>h.onCluster&&h.onCluster(s.dataset.clus, +s.value/100)));
+  document.querySelectorAll('#vizmode button').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('#vizmode button').forEach(x=>x.classList.toggle('active',x===b));
+    h.onVizStrategy&&h.onVizStrategy(b.dataset.viz);
+  }));
 
   $('#focus-blend').addEventListener('input',e=>h.onFocus(+e.target.value/100));
   document.querySelectorAll('.dial').forEach(s=>s.addEventListener('input',()=>h.onDial(s.dataset.dial, +s.value/100)));
@@ -101,6 +111,22 @@ export function initControls(h){
     know(text){ $('#know').textContent=text; },
     sourceNote(t){ $('#scan-source-note').textContent=t; },
     drillStatus(t){ const e=$('#drill-status'); if(e){ e.textContent=t||''; e.classList.toggle('on', !!t); } },
+    bandReadout(t){ const e=$('#band-readout'); if(e){ e.textContent=t||''; e.classList.toggle('on', !!t); } },
+    setModels(arr){
+      const el=$('#model-list'); if(!el) return;
+      const groups=[['S','Shear (S)'],['P','P-wave (P)']];
+      el.innerHTML=groups.map(([kind,label])=>{
+        const rows=(arr||[]).filter(m=>m.kind===kind);
+        if(!rows.length) return '';
+        return `<div class="model-grp">${label}</div>`+rows.map(m=>
+          `<label class="model-row"><input type="checkbox" data-model="${m.name}"${m.enabled?' checked':''} />`+
+          `<span class="model-name">${m.name}</span>`+
+          `<span class="model-tag ${kind.toLowerCase()}">${kind}</span></label>`).join('');
+      }).join('');
+      el.querySelectorAll('input[data-model]').forEach(c=>
+        c.addEventListener('change',e=>h.onModelToggle&&h.onModelToggle(e.target.dataset.model, e.target.checked)));
+    },
+    clusterValue(name, text){ const e=$('#clus-'+name); if(e) e.textContent=text; },
     reflectDials(norms){ document.querySelectorAll('.dial').forEach(s=>{ const v=norms[s.dataset.dial]; if(v!=null) s.value=Math.round(Math.max(0,Math.min(1,v))*100); }); },
     tip(f, x, y){
       if(!f){ $('#tip').classList.add('hidden'); return; }

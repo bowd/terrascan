@@ -14,6 +14,7 @@ import { initControls } from './ui.js';
 import { DATA_GROUPS, dataSourcesHTML } from './datasources.js';
 import { EXPERIMENTS, EXP_KIND } from './experiments.js';
 import { makeDataBodies } from './databodies.js';
+import { makeDataEngine } from './dataengine.js';
 
 const TEX_W=1024, TEX_H=512;
 const PIX=Math.min(window.devicePixelRatio||1, 2);
@@ -60,10 +61,20 @@ const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
   showStruct:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
   showBorders:false, showMarkers:true, showFoot:false, showExp:false, spin:true,
-  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'synth', drillNav:false,
+  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'synth', drillNav:false, cutaway:false,
 };
 // drill-zoom navigation "tape": waypoints of {orbit target, camera position}
 let tape=[], navIdx=0, navCam=null, navTarget=null;
+
+// ---------- live data pipeline (per-model volumes combined in the browser) ----------
+let engine=null, gridScale=16, nModels=0, refreshTimer=null;
+// the knobs between raw data and the projection (sliders in the Data-pipeline panel)
+const clusterParams={ threshold:0.55, smooth:1, agreeMin:0.4, strategy:'surfaces', opacity:0.9, band:0.016 };
+const CLUS_RANGE={ threshold:[0.1,1.0], smooth:[0,3], agreeMin:[0,0.9] };
+// velocity-coupled depth band + accelerating dive
+let velEMA=0, prevDepthForVel=0, diveVel=0;
+const DIVE_V0=55, DIVE_ACCEL=150, DIVE_VMAX=900;   // km/s of depth: slow start, accelerating
+const BAND_NARROW=35, BAND_WIDE=640, BAND_VREF=720; // km band width vs descent speed
 
 // ---------- tunable dials (every magic number, live) ----------
 const DIAL_RANGE={ reliefOpacity:[0,1], reliefBright:[0.6,1.8], coastOpacity:[0,0.9],
@@ -79,7 +90,7 @@ function applyDial(name,v){ dials[name]=v;
   else if(name==='scanStrength') scan&&scan.setOpacity(v);
   else if(name==='scanGain') scan&&scan.setGain(v);
   else if(name==='scanFloor') scan&&scan.setCovFloor(v);
-  else if(name==='bodyOpacity') structures&&structures.setOpacity(v);
+  else if(name==='bodyOpacity'){ structures&&structures.setOpacity(v); dataBodies&&dataBodies.setOpacity(v); clusterParams.opacity=v; }
   else if(name==='focusBand') structures&&structures.setFocusBand(v);
   // modelGain & modelHaze are read live in the render loop
 }
@@ -100,6 +111,46 @@ function applyFocus(t){
 const smooth01=(x)=>{ x=x<0?0:x>1?1:x; return x*x*(3-2*x); };
 const peelFactor=(d)=> 1 - 0.86*smooth01((d-50)/520);   // 1 @50km → ~0.14 by ~570km
 function setReliefOpacity(){ relief&&relief.setOpacity(dials.reliefOpacity*peelFactor(state.depth)); }
+
+// ---- data pipeline: combine enabled models -> scan slice + 3-D bodies ----------
+function toScanEns(c){                                    // engine float field -> scan's Int8/Uint8 shape
+  const N=c.ndep*c.nlat*c.nlon, dvs=new Int8Array(N), agree=new Uint8Array(N);
+  for(let k=0;k<N;k++){ let d=Math.round(c.dvs[k]*gridScale); dvs[k]=d<-127?-127:d>127?127:d;
+    let a=Math.round(c.agree[k]*255); agree[k]=a<0?0:a>255?255:a; }
+  return { depths:c.depths, nlon:c.nlon, nlat:c.nlat, dvsScale:gridScale, dvs, agree };
+}
+function refreshFromEngine(){                             // recompute ensemble + rebuild slice & bodies
+  if(!engine) return;
+  const c=engine.combined();
+  scanField.setEnsemble(toScanEns(c)); builtDepth=-999;
+  if(dataBodies) dataBodies.rebuild(c, clusterParams);
+}
+function scheduleRefresh(){ if(refreshTimer) clearTimeout(refreshTimer); refreshTimer=setTimeout(refreshFromEngine, 130); }
+function applyCluster(name,t){
+  const r=CLUS_RANGE[name]; if(!r) return;
+  let v=r[0]+(r[1]-r[0])*t; if(name==='smooth') v=Math.round(v);
+  clusterParams[name]=v; reflectClusterReadouts(); scheduleRefresh();
+}
+function reflectClusterReadouts(){
+  ui.clusterValue('threshold', clusterParams.threshold.toFixed(2)+' %');
+  ui.clusterValue('smooth', clusterParams.smooth+'×');
+  ui.clusterValue('agreeMin', clusterParams.agreeMin.toFixed(2));
+}
+function syncClusterFromUI(){                             // adopt the sliders' initial positions
+  document.querySelectorAll('.clus').forEach(s=>{ const r=CLUS_RANGE[s.dataset.clus]; if(!r) return;
+    let v=r[0]+(r[1]-r[0])*(+s.value/100); if(s.dataset.clus==='smooth') v=Math.round(v);
+    clusterParams[s.dataset.clus]=v; });
+  reflectClusterReadouts();
+}
+function applyCutaway(){                                  // drop everything shallower than the current depth
+  const on=state.cutaway;
+  if(dataBodies) dataBodies.setCutaway(on);
+  structures.setCutaway(on);
+  relief && (relief.mesh.visible = on ? false : state.showRelief);     // the surface skin is "above" the cut
+  coastObj && (coastObj.visible = on ? false : state.showCoast);
+  gratObj  && (gratObj.visible  = on ? false : state.showCoast);
+  bordersObj && (bordersObj.visible = on ? false : state.showBorders);
+}
 
 let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj, expObj, dataBodies;
 let earthWire, hovered=null, glideCam=null, glideTarget=null, savedCam=null, savedTarget=null;
@@ -204,14 +255,20 @@ const handlers={
     else if(name==='drill'){ state.drillNav=v; controls.enableZoom=!v; controls.minDistance=v?0.06:1.28;
       tape=[{target:controls.target.clone(), camPos:camera.position.clone()}]; navIdx=0; navCam=null; navTarget=null;
       ui.drillStatus(v?'drill ▾ scroll in to dive · out to rewind':''); }
+    else if(name==='cutaway'){ state.cutaway=v; applyCutaway(); }
+    else if(name==='normalize'){ engine&&engine.setNormalize(v); scheduleRefresh(); }
   },
+  onModelToggle:(name,on)=>{ engine&&engine.setEnabled(name,on); scheduleRefresh(); },
+  onModelKind:(kind,on)=>{ engine&&engine.enableKind(kind,on); engine&&ui.setModels(engine.list()); scheduleRefresh(); },
+  onCluster:(name,t)=>applyCluster(name,t),
+  onVizStrategy:(name)=>{ clusterParams.strategy=name; if(dataBodies) dataBodies.setStrategy(name); },
   onDial:(name,t)=>{ const r=DIAL_RANGE[name]; if(r) applyDial(name, r[0]+(r[1]-r[0])*t); },
   onFocus:(t)=>applyFocus(t),
   onSource:(s)=>{ state.source=s; scanField.setSource(s); builtDepth=-999;
     structures.group.visible = (s==='real') ? false : state.showStruct;  // hand-built bodies step aside
     if(dataBodies) dataBodies.group.visible = (s==='real');               // real data shown AS structures
     ui.sourceNote(s==='real'
-      ? 'Real ensemble of 5 models (SGLOBE-rani · SEISGLOB2 · TX2011 · S40RTS · SEMUCB-WM1), meshed into 3-D isosurfaces — blue = fast/cold bodies (slabs), red = slow/hot bodies (LLSVP piles, plumes). Built only where models agree. Labels are the synthesis.'
+      ? nModels+' real tomography models combined live (toggle models & tune clustering in the Data-pipeline panel), meshed into 3-D structures — blue = fast/cold (slabs), red = slow/hot (LLSVP piles, plumes). Built only where models agree.'
       : 'A hand-built, geographically-faithful synthesis of published features.'); },
   onDive:()=>{ stopTour(); state.diving?stopDive():startDive(); },
   onTickJump:(d)=>{ stopTour(); stopDive(); animateTo(d); },
@@ -304,25 +361,33 @@ function expTipHTML(e){
     `<span class="tip-d">${e.reveals}<br>${e.reach}${e.src?' · click for source ↗':''}</span>`;
 }
 
-// real multi-model ensemble (baked by build-tomo.mjs): mean ΔVs + cross-model agreement
+// per-model volumes (baked by build-tomo.mjs) combined live in the browser, so models
+// can be toggled and the clustering re-tuned on the fly between raw data and projection
 async function loadEnsemble(){
   try{
-    const j=await fetch('./data/tomo-ensemble.json').then(r=>r.json());
-    const dvs=new Int8Array(Uint8Array.from(atob(j.dvs),c=>c.charCodeAt(0)).buffer);
-    const agree=Uint8Array.from(atob(j.agree),c=>c.charCodeAt(0));
-    const ens={depths:j.depths, nlon:j.nlon, nlat:j.nlat, dvsScale:j.dvsScale, dvs, agree, models:j.models};
-    scanField.setEnsemble(ens);
-    dataBodies=makeDataBodies(ens);                          // structural representation of the real data
+    const j=await fetch('./data/tomo-models.json').then(r=>r.json());
+    gridScale=j.grid.dvsScale;
+    const models=j.models.map(m=>({ name:m.name, kind:m.kind,
+      dvs:new Int8Array(Uint8Array.from(atob(m.dvs),c=>c.charCodeAt(0)).buffer) }));
+    nModels=models.length;
+    engine=makeDataEngine({ grid:j.grid, models });
+    syncClusterFromUI();                                      // adopt the panel's slider positions
+    const c=engine.combined();
+    scanField.setEnsemble(toScanEns(c));
+    dataBodies=makeDataBodies(c, clusterParams);              // 3-D structures from the live ensemble
     dataBodies.group.visible=(state.source==='real');
     dataBodies.setCurDepth(state.depth/EARTH_RADIUS);
+    dataBodies.setCutaway(state.cutaway);
     scanScene.add(dataBodies.group);
-  }catch(e){ console.warn('ensemble load failed', e); }
+    ui.setModels(engine.list());
+    const rb=document.querySelector('#datasrc button[data-src="real"]'); if(rb) rb.textContent='real · '+nModels+' models';
+  }catch(e){ console.warn('models load failed', e); }
 }
 
 // ---------- dive ----------
 let diveTarget=null;
-function startDive(){ stopTour(); state.diving=true; ui.dive(true); if(state.depth>=EARTH_RADIUS-5) setDepth(0); }
-function stopDive(){ if(state.diving){ state.diving=false; ui.dive(false);} diveTarget=null; }
+function startDive(){ stopTour(); state.diving=true; diveVel=DIVE_V0; ui.dive(true); if(state.depth>=EARTH_RADIUS-5) setDepth(0); }
+function stopDive(){ if(state.diving){ state.diving=false; ui.dive(false);} diveVel=0; diveTarget=null; }
 function animateTo(d){ diveTarget=d; }
 
 // ---------- guided tour ----------
@@ -444,13 +509,22 @@ function animate(){
 
   // dive / glide
   if(state.diving){
-    let d=state.depth + (EARTH_RADIUS/22)*dt;
+    diveVel = Math.min(DIVE_VMAX, diveVel + DIVE_ACCEL*dt);   // slow start, accelerating descent
+    let d=state.depth + diveVel*dt;
     if(d>=EARTH_RADIUS){ d=EARTH_RADIUS; stopDive(); }
     setDepth(d);
   } else if(diveTarget!==null){
     const d=state.depth + (diveTarget-state.depth)*Math.min(1, dt*4.5);
     if(Math.abs(d-diveTarget)<2){ setDepth(diveTarget); diveTarget=null; } else setDepth(d);
   }
+
+  // velocity-coupled depth band: narrow & crisp when still/slow, widening with descent speed
+  const instV=Math.abs(state.depth-prevDepthForVel)/Math.max(dt,1e-3); prevDepthForVel=state.depth;
+  velEMA += (instV-velEMA)*Math.min(1, dt*3.5);
+  const bandKm=BAND_NARROW + (BAND_WIDE-BAND_NARROW)*smooth01(velEMA/BAND_VREF);
+  const bandFrac=bandKm/EARTH_RADIUS;
+  if(dataBodies) dataBodies.setBand(bandFrac);
+  if(ui) ui.bandReadout(`band ≈ ${Math.round(bandKm)} km wide${state.cutaway?'  ·  cutaway':''}`);
 
   // throttled scan rebuild
   const now=performance.now();

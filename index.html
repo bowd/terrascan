@@ -19,6 +19,7 @@
     <span id="sd-layer" class="sd-layer">Surface · crust</span>
   </div>
   <div id="drill-status" class="drill-status"></div>
+  <div id="band-readout" class="band-readout"></div>
 
   <!-- guided narration during the tour -->
   <div id="tour" class="tour hidden">
@@ -76,6 +77,7 @@
         <label class="toggle"><input type="checkbox" id="t-exp" /><span>Experiments</span></label>
         <label class="toggle"><input type="checkbox" id="t-spin" checked /><span>Spin</span></label>
         <label class="toggle"><input type="checkbox" id="t-drill" /><span>Drill-zoom <em>exp</em></span></label>
+        <label class="toggle"><input type="checkbox" id="t-cut" /><span>Cutaway (drop above)</span></label>
       </div>
       <div class="ctl master"><span>focus · surface ⟷ interior</span><input id="focus-blend" class="slider" type="range" min="0" max="100" value="40" /></div>
       <details class="advanced">
@@ -135,6 +137,30 @@
           <li><i class="sw" style="background:#33ffa6"></i>ridge / rift (hot)</li>
         </ul>
         <p class="legend-foot">Same data, coloured by what the feature <em>is</em> rather than its speed.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-top"><span class="card-title">Data pipeline</span>
+        <span class="info" tabindex="0" data-tip="Choose which published tomography models feed the scan, how they're combined (normalise / cluster / agreement), and how the result is drawn. Shear (S) and P-wave (P) models measure different waves through the same Earth.">ⓘ</span>
+      </div>
+      <div class="sub">Model inputs</div>
+      <div class="model-groups">
+        <label class="toggle model-all"><input type="checkbox" id="t-all-s" checked /><span>all S</span></label>
+        <label class="toggle model-all"><input type="checkbox" id="t-all-p" checked /><span>all P</span></label>
+      </div>
+      <div id="model-list" class="model-list"></div>
+      <label class="toggle normalize-toggle"><input type="checkbox" id="t-normalize" checked /><span>normalize models</span></label>
+      <div class="dial-grp">clustering</div>
+      <div class="ctl"><span>threshold</span><input class="slider dial clus" data-clus="threshold" type="range" min="0" max="100" value="50" /><span class="clus-val" id="clus-threshold">0.50</span></div>
+      <div class="ctl"><span>smooth</span><input class="slider dial clus" data-clus="smooth" type="range" min="0" max="100" value="30" /><span class="clus-val" id="clus-smooth">0.30</span></div>
+      <div class="ctl"><span>agreement min</span><input class="slider dial clus" data-clus="agreeMin" type="range" min="0" max="100" value="40" /><span class="clus-val" id="clus-agreeMin">0.40</span></div>
+      <div class="dial-grp">visualization</div>
+      <div class="segmented" id="vizmode">
+        <button data-viz="surfaces" class="active">Surfaces</button>
+        <button data-viz="volume">Volume</button>
+        <button data-viz="points">Points</button>
+        <button data-viz="wire">Wire</button>
       </div>
     </section>
 
