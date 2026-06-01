@@ -8,6 +8,7 @@ import { makeScanField, activeFeatures, dominantFeatures } from './tomography.js
 import { loadGeo, rasterizeLand, buildCoastlines, buildGraticule, latLonToVec3 } from './geo.js';
 import { makeTheoryShells, makeScanShell } from './shells.js';
 import { makeStructures } from './structures.js';
+import { makeReliefEarth } from './surface.js';
 import { makePipeline } from './postfx.js';
 import { initControls } from './ui.js';
 import { DATA_GROUPS, dataSourcesHTML } from './datasources.js';
@@ -49,20 +50,21 @@ theoryScene.add(theoryShells);
 
 // ---------- state ----------
 const state={
-  depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62,
-  showStruct:true, showScan:true, showTheory:true, showCoast:true, showMarkers:true, spin:true,
+  depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
+  showStruct:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
+  showBorders:false, showMarkers:true, spin:true,
   diving:false, touring:false, contextLost:false,
 };
 
-let scanField, scan, structures, markers=[], markerGroup, ui, coastObj, gratObj;
+let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj;
 const DOT_GEO=new THREE.SphereGeometry(0.012, 12, 12);
 
 // ---------- boot ----------
 init().catch(e=>{ console.error(e); fail('Initialisation failed — see console.'); });
 
 async function init(){
-  let coastlines, land;
-  try { ({coastlines, land}=await loadGeo()); }
+  let coastlines, land, borders;
+  try { ({coastlines, land, borders}=await loadGeo()); }
   catch(e){ fail('Could not load map data — serve this folder over HTTP (e.g. <code>python3 -m http.server</code>), not file://'); return; }
   const landMask=rasterizeLand(land, TEX_W, TEX_H);
 
@@ -72,10 +74,17 @@ async function init(){
   scanScene.add(scan.mesh);
 
   structures=makeStructures();
+  structures.setOpacity(0.82);
   scanScene.add(structures.mesh);
+
+  relief=makeReliefEarth();
+  relief.setOpacity(state.reliefOpacity); relief.mesh.visible=state.showRelief;
+  scanScene.add(relief.mesh);
 
   gratObj=buildGraticule(0.999); scanScene.add(gratObj);
   coastObj=buildCoastlines(coastlines, 1.001); scanScene.add(coastObj);
+  bordersObj=buildCoastlines(borders, 1.0016, 0xffe0b0, 0.5);
+  bordersObj.visible=state.showBorders; scanScene.add(bordersObj);
 
   markerGroup=new THREE.Group();
   scanScene.add(markerGroup);
@@ -124,12 +133,16 @@ const handlers={
   onToggle:(name,v)=>{
     if(name==='struct'){ state.showStruct=v; structures.mesh.visible=v; }
     else if(name==='scan'){ state.showScan=v; scan.mesh.visible=v; }
+    else if(name==='infer'){ state.showInfer=v; scan.setInfer(v?1:0); }
     else if(name==='theory') state.showTheory=v;
+    else if(name==='relief'){ state.showRelief=v; relief.mesh.visible=v; }
     else if(name==='coast'){ state.showCoast=v; coastObj&&(coastObj.visible=v); gratObj&&(gratObj.visible=v); }
+    else if(name==='borders'){ state.showBorders=v; bordersObj&&(bordersObj.visible=v); }
     else if(name==='markers'){ state.showMarkers=v; markerGroup.visible=v; }
     else if(name==='spin'){ state.spin=v; if(!state.touring) controls.autoRotate=v; }
   },
   onScanOpacity:(v)=>{ state.scanOpacity=v; scan.setOpacity(v); },
+  onReliefOpacity:(v)=>{ state.reliefOpacity=v; relief.setOpacity(v); },
   onBlur:(v)=>{ state.blur=v; },
   onGain:(v)=>{ state.gain=v; scan.setGain(v); refreshFeaturePanel(); },
   onDive:()=>{ stopTour(); state.diving?stopDive():startDive(); },
@@ -151,12 +164,13 @@ function setDepth(d){
   ui.depth(d, gl.name+(gl.state==='liquid'?' · liquid':''));
   lastReadout={
     vs:(gl.state==='liquid'?'0 (liquid)':p.vs.toFixed(2)+' km/s'),
-    temp:'≈'+(Math.round(p.temp/10)*10).toLocaleString()+' K',
+    temp:'≈ '+(Math.round(p.temp/10)*10).toLocaleString()+' K · '+(Math.round((p.temp-273.15)/10)*10).toLocaleString()+' °C',
     rho:p.rho.toFixed(2)+' g/cm³',
     p:(p.pressure>=10?p.pressure.toFixed(0):p.pressure.toFixed(1))+' GPa',
     covPct:scanField.coverageMean*100,
   };
   ui.readout(lastReadout);
+  ui.know(gl.note);
   refreshFeaturePanel();
   positionMarkers(d);
 }

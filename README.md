@@ -20,6 +20,10 @@ Two layers are composited in 3-D, sharing one camera:
 | **The scan** | A classified slice of seismic tomography at the chosen depth — fast (cold, sinking) vs slow (hot, rising) shear-velocity anomalies. | **Crisp.** Colour encodes the anomaly (or the feature class); **opacity encodes how well the region is resolved.** Where coverage is thin, the scan fades and the model behind shows through. |
 | **The model** | The smooth, radially-symmetric theoretical reference Earth (PREM). | **Blurry** — rendered to an offscreen buffer and Gaussian-blurred: an *estimation*, not an observation. Where the scan goes blind (the deep core), the estimate brightens to take over. |
 | **3D bodies** | Each feature (slab, plume, hot pile, cratonic keel, ULVZ) interpolated from its surface/point reading into a translucent body spanning its real depth range. | A point-cloud **anatomy** of the interior — slabs as dipping sheets, plumes as conduits, the two LLSVPs as basal piles. The band at your current depth blazes; the rest stay faint for context. |
+| **Relief surface** | A translucent blue-marble Earth with hill-shaded topography (+ optional country borders). | Geographic orientation you can see *through* to the interior — toggle it or fade it with the opacity slider. |
+| **Theory in gaps** | Where seismic coverage is too thin to resolve, the *expected* field is shown faintly under a diagonal **hatch**. | Makes "no data here — this is the model's guess" explicit, instead of just fading to nothing. |
+
+Each depth also reports its **temperature** (K and °C), pressure, density, the resolved-coverage %, and a plain "what we know here" note.
 
 A built-in **"How we know"** panel lists the public datasets & methods behind all of this (tomography models, normal modes, gravity, geoneutrinos, the core field, …) with links.
 

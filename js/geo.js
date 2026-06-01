@@ -12,11 +12,12 @@ export function latLonToVec3(lat, lon, r=1){
 }
 
 export async function loadGeo(){
-  const [coastlines, land] = await Promise.all([
+  const [coastlines, land, borders] = await Promise.all([
     fetch('./data/coastlines.json').then(r=>r.json()),
     fetch('./data/land.json').then(r=>r.json()),
+    fetch('./data/borders.json').then(r=>r.json()),
   ]);
-  return {coastlines, land};
+  return {coastlines, land, borders};
 }
 
 // Rasterise land polygons to an equirectangular 0..1 mask (W*H, row 0 = north).

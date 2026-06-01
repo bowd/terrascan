@@ -80,7 +80,7 @@ export function makeStructures(){
 
   const mat=new THREE.RawShaderMaterial({
     transparent:true, depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending,
-    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.055}, uMode:{value:0}, uOpacity:{value:1} },
+    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.022}, uMode:{value:0}, uOpacity:{value:1} },
     vertexShader:`precision highp float;
       uniform mat4 modelViewMatrix, projectionMatrix;
       uniform float uCurDepth, uFocus, uMode;

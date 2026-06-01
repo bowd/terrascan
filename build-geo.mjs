@@ -29,9 +29,23 @@ function loadLand() {
   return polys.map((rings) => rings.map((ring) => ring.map(([lon, lat]) => [r(lon), r(lat)])));
 }
 
+function loadLines(file) {
+  const gj = JSON.parse(readFileSync(file, 'utf8'));
+  const lines = [];
+  for (const f of gj.features) {
+    const g = f.geometry; if (!g) continue;
+    if (g.type === 'LineString') lines.push(g.coordinates);
+    else if (g.type === 'MultiLineString') for (const ls of g.coordinates) lines.push(ls);
+  }
+  return lines.map((ln) => ln.map(([lon, lat]) => [r(lon), r(lat)]));
+}
+
 const coast = loadCoast();
 const land = loadLand();
+const borders = loadLines('data/borders-110m.json');
 writeFileSync('data/coastlines.json', JSON.stringify(coast));
 writeFileSync('data/land.json', JSON.stringify(land));
+writeFileSync('data/borders.json', JSON.stringify(borders));
 console.log('coastlines: %d lines, %d bytes', coast.length, JSON.stringify(coast).length);
 console.log('land: %d polys, %d bytes', land.length, JSON.stringify(land).length);
+console.log('borders: %d lines, %d bytes', borders.length, JSON.stringify(borders).length);

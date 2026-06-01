@@ -78,6 +78,7 @@
           <li><i class="sw hot"></i><b>Red = slower</b> — hotter, softer rock that is <b>rising</b> (plumes, hot piles)</li>
           <li><i class="sw cold"></i><b>Blue = faster</b> — colder, stiffer rock that is <b>sinking</b> (old sea floor / slabs)</li>
           <li><i class="sw faint"></i><b>Faint = barely scanned</b> — coverage is thin here, so the blurry model behind shows through</li>
+          <li><i class="sw hatch"></i><b>Hatched = no data</b> — theory's expectation where there's no scan (inferred, not measured)</li>
         </ul>
       </div>
 
@@ -96,25 +97,28 @@
 
     <!-- 3 · AT THIS DEPTH -->
     <section class="card">
-      <div class="card-top"><span class="card-title">3 · WHAT'S DOWN THERE</span></div>
+      <div class="card-top"><span class="card-title">3 · WHAT'S DOWN THERE</span>
+        <span class="info" tabindex="0" data-tip="Temperature & pressure are standard estimates for a layered Earth at this depth; shear-wave speed is the PREM baseline the scan colours deviate from. ‘What we know here’ describes the rock and processes at this depth.">ⓘ</span>
+      </div>
 
       <div class="sub">The scan picks out</div>
       <ul id="feature-list" class="feature-list"><li class="muted">—</li></ul>
 
-      <div class="sub model-sub">The average Earth here
-        <span class="info" tabindex="0" data-tip="These are the textbook values for a perfectly layered Earth (the PREM reference model) at this depth — the BASELINE. The colours above show where real rock runs faster or slower than these numbers.">ⓘ</span>
-      </div>
-      <div class="readout">
-        <div class="ro"><span class="ro-v" id="ro-vs">—</span><span class="ro-k">shear-wave speed<br><em>the baseline the colours bend around</em></span></div>
-        <div class="ro"><span class="ro-v" id="ro-temp">—</span><span class="ro-k">temperature <em>(estimate)</em></span></div>
-        <div class="ro"><span class="ro-v" id="ro-rho">—</span><span class="ro-k">density</span></div>
+      <div class="sub model-sub">Conditions at this depth</div>
+      <div class="temp-big"><span id="ro-temp">—</span><span class="temp-cap">temperature down here</span></div>
+      <div class="readout3">
         <div class="ro"><span class="ro-v" id="ro-p">—</span><span class="ro-k">pressure</span></div>
+        <div class="ro"><span class="ro-v" id="ro-rho">—</span><span class="ro-k">density</span></div>
+        <div class="ro"><span class="ro-v" id="ro-vs">—</span><span class="ro-k">shear speed<br><em>baseline</em></span></div>
       </div>
       <div class="coverage">
         <div class="coverage-top"><span>how well we've scanned here</span><span id="ro-cov">—</span></div>
         <div class="coverage-bar"><div id="cov-fill" class="coverage-fill"></div></div>
         <div class="coverage-foot" id="cov-foot">solid scan coverage</div>
       </div>
+
+      <div class="sub know-sub">What we know here</div>
+      <div id="know" class="know">—</div>
     </section>
 
     <!-- 4 · DISPLAY -->
@@ -123,14 +127,18 @@
       <div class="toggles">
         <label class="toggle"><input type="checkbox" id="t-struct" checked /><span>3D bodies</span></label>
         <label class="toggle"><input type="checkbox" id="t-scan" checked /><span>Depth slice</span></label>
+        <label class="toggle"><input type="checkbox" id="t-infer" checked /><span>Theory gaps</span></label>
         <label class="toggle"><input type="checkbox" id="t-theory" checked /><span>Model</span></label>
+        <label class="toggle"><input type="checkbox" id="t-relief" checked /><span>Surface</span></label>
         <label class="toggle"><input type="checkbox" id="t-coast" checked /><span>Coastlines</span></label>
+        <label class="toggle"><input type="checkbox" id="t-borders" /><span>Countries</span></label>
         <label class="toggle"><input type="checkbox" id="t-markers" checked /><span>Labels</span></label>
         <label class="toggle"><input type="checkbox" id="t-spin" checked /><span>Spin</span></label>
       </div>
       <details class="advanced">
         <summary>fine tuning</summary>
         <div class="ctl"><span>slice strength</span><input id="scan-opacity" class="slider" type="range" min="0" max="100" value="58" /></div>
+        <div class="ctl"><span>surface opacity</span><input id="surface-opacity" class="slider" type="range" min="0" max="100" value="72" /></div>
         <div class="ctl"><span>anomaly gain</span><input id="gain" class="slider" type="range" min="40" max="160" value="100" /></div>
         <div class="ctl"><span>model haze</span><input id="blur-amount" class="slider" type="range" min="0" max="100" value="62" /></div>
       </details>

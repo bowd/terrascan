@@ -7,3 +7,4 @@ test-results/
 .cache/
 *.log
 shots/
+data/borders-110m.json

@@ -39,18 +39,31 @@ await setDepth(2700); await page.waitForTimeout(1400); await page.screenshot({pa
 await click('#colormode button[data-mode="dvs"]');
 
 await setChk('#t-theory', false); await page.waitForTimeout(700); await page.screenshot({path:'shots/06-scan-only.png'});
-await setChk('#t-theory', true); await setChk('#t-scan', false); await setChk('#t-struct', false); await page.waitForTimeout(700); await page.screenshot({path:'shots/07-model-only.png'});
-await setChk('#t-scan', true); await setChk('#t-struct', true);
+await setChk('#t-theory', true); await setChk('#t-scan', false); await setChk('#t-struct', false); await setChk('#t-relief', false); await page.waitForTimeout(700); await page.screenshot({path:'shots/07-model-only.png'});
+await setChk('#t-scan', true); await setChk('#t-struct', true); await setChk('#t-relief', true);
 
-// 3D structures at mid-mantle + data panel
+// 3D structures + slice highlight at mid-mantle + data panel
 await setDepth(1800); await page.waitForTimeout(1400); await page.screenshot({path:'shots/09-structures.png'});
 await click('#data-btn'); await page.waitForTimeout(500); await page.screenshot({path:'shots/10-data.png'}); await click('#data-close');
+
+// relief Earth + country borders at the surface
+await setDepth(0); await setChk('#t-borders', true); await page.waitForTimeout(1000); await page.screenshot({path:'shots/11-relief-countries.png'});
+console.log('temp@0:', await page.evaluate(()=>document.querySelector('#ro-temp').textContent), '| know:', (await page.evaluate(()=>document.querySelector('#know').textContent)).slice(0,60));
+// relief alignment check (structures + model off)
+await setChk('#t-struct', false); await setChk('#t-theory', false); await page.waitForTimeout(800);
+await page.screenshot({path:'shots/12-relief-only.png'});
+await setChk('#t-struct', true); await setChk('#t-theory', true); await setChk('#t-borders', false);
 
 // tour
 await setDepth(2700); await page.waitForTimeout(600);
 await click('#tour-btn'); await page.waitForTimeout(2600); await page.screenshot({path:'shots/08-tour.png'});
 console.log('tour caption:', await page.evaluate(()=>document.querySelector('#tour-title')?.textContent));
 await click('#tour-stop');
+
+// theory-in-gaps hatch (3D bodies off so the slice is unobstructed)
+await setChk('#t-struct', false); await setDepth(1500); await page.waitForTimeout(1400);
+await page.screenshot({path:'shots/13-theory-gaps.png'});
+await setChk('#t-struct', true);
 
 console.log('--- PAGE ERRORS ---'); console.log(errors.length?errors.join('\n'):'(none)');
 console.log('--- CONSOLE errors/warnings ---');

@@ -75,7 +75,7 @@ export function makeScanShell(scanTexture){
     uniforms:{
       uTex:{value:scanTexture},
       uOpacity:{value:0.92}, uMode:{value:0.0}, uGain:{value:1.0}, uCovFloor:{value:0.16},
-      uCat:{value:cats},
+      uInferred:{value:1.0}, uCat:{value:cats},
     },
     vertexShader:`
       varying vec3 vP; varying vec3 vN; varying vec3 vV;
@@ -88,7 +88,7 @@ export function makeScanShell(scanTexture){
     fragmentShader:`
       precision highp float;
       varying vec3 vP; varying vec3 vN; varying vec3 vV;
-      uniform sampler2D uTex; uniform float uOpacity,uMode,uGain,uCovFloor;
+      uniform sampler2D uTex; uniform float uOpacity,uMode,uGain,uCovFloor,uInferred;
       uniform vec3 uCat[7];
       const float PI=3.141592653589793;
       vec3 dvsColor(float t){
@@ -116,9 +116,22 @@ export function makeScanShell(scanTexture){
         color += color*strength*0.35;
         float ndv=clamp(dot(normalize(vN),normalize(vV)),0.0,1.0);
         float limb=smoothstep(0.0,0.32,ndv);
-        float alpha=cov*(uCovFloor+(1.0-uCovFloor)*strength)*uOpacity*limb;
         float isFeat = id>0 ? 1.0 : 0.0;
-        if(uMode>0.5) alpha=cov*(0.05+0.95*isFeat)*uOpacity*limb; // feature mode: hide neutral mantle
+        float dataConf = smoothstep(0.14, 0.42, cov);       // 1 = resolved, 0 = blind
+        float gap = (1.0-dataConf)*uInferred;
+        // measured: solid where actually resolved
+        float aData = (uMode>0.5 ? cov*(0.05+0.95*isFeat) : cov*(uCovFloor+(1.0-uCovFloor)*strength)) * uOpacity*limb;
+        // inferred: the faint EXPECTED field + a thin diagonal hatch that reads as "no data"
+        float dstr = mod(gl_FragCoord.x + gl_FragCoord.y, 6.0);
+        float hatch = step(dstr, 2.0);
+        float aInf = ((uMode>0.5 ? 0.04+0.5*isFeat : 0.10+0.5*strength)*0.5 + hatch*0.16) * uOpacity*limb;
+        vec3 inferredCol = mix(color, vec3(0.46,0.52,0.62), 0.42);
+        color = mix(color, inferredCol, gap);
+        float alpha = mix(aData, aInf, gap);
+        // luminous rim so the current depth reads as a distinct thin slice surface
+        float rim=pow(1.0-ndv,4.0);
+        color=mix(color, vec3(0.62,0.95,1.0), rim*0.7);
+        alpha=max(alpha, rim*0.55*uOpacity);
         gl_FragColor=vec4(color,alpha);
       }`,
   });
@@ -130,5 +143,6 @@ export function makeScanShell(scanTexture){
     setOpacity:(o)=>mat.uniforms.uOpacity.value=o,
     setMode:(m)=>mat.uniforms.uMode.value=m,
     setGain:(g)=>mat.uniforms.uGain.value=g,
+    setInfer:(v)=>mat.uniforms.uInferred.value=v,
   };
 }
