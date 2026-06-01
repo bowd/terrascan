@@ -37,6 +37,7 @@ const setF=async(v)=>page.evaluate(v=>{const s=document.querySelector('#focus-bl
 await setF(100); await page.waitForTimeout(900); await page.screenshot({path:'shots/20-focus-interior.png'});
 await setF(0);   await page.waitForTimeout(900); await page.screenshot({path:'shots/21-focus-surface.png'});
 await setF(40);  await page.waitForTimeout(500);
+await setChk('#t-exp', true); await page.waitForTimeout(800); await page.screenshot({path:'shots/22-experiments.png'}); await setChk('#t-exp', false);
 await page.click('#glossary-btn'); await page.waitForTimeout(400); await page.screenshot({path:'shots/18-glossary.png'});
 console.log('glossary items:', await page.evaluate(()=>document.querySelectorAll('#glossary-body .gloss-item').length));
 await page.click('#glossary-close');

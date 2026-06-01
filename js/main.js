@@ -12,6 +12,7 @@ import { makeReliefEarth } from './surface.js';
 import { makePipeline } from './postfx.js';
 import { initControls } from './ui.js';
 import { DATA_GROUPS, dataSourcesHTML } from './datasources.js';
+import { EXPERIMENTS, EXP_KIND } from './experiments.js';
 
 const TEX_W=1024, TEX_H=512;
 const PIX=Math.min(window.devicePixelRatio||1, 2);
@@ -55,7 +56,7 @@ theoryScene.add(theoryShells);
 const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
   showStruct:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
-  showBorders:false, showMarkers:true, showFoot:false, spin:true,
+  showBorders:false, showMarkers:true, showFoot:false, showExp:false, spin:true,
   diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4,
 };
 
@@ -90,7 +91,7 @@ function applyFocus(t){
   ui&&ui.reflectDials(dialNorms());
 }
 
-let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj;
+let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj, expObj;
 let earthWire, hovered=null, glideCam=null, glideTarget=null, savedCam=null, savedTarget=null;
 const raycaster=new THREE.Raycaster(), ptr=new THREE.Vector2(); let downPos=null;
 const DOT_GEO=new THREE.SphereGeometry(0.012, 12, 12);
@@ -113,6 +114,8 @@ async function init(){
   structures.setOpacity(0.9);
   scanScene.add(structures.group);
   structures.footGroup.visible=state.showFoot; scanScene.add(structures.footGroup);
+
+  expObj=buildExperimentPins(); expObj.group.visible=state.showExp; scanScene.add(expObj.group);
 
   relief=makeReliefEarth();
   relief.setOpacity(dials.reliefOpacity); relief.setBright(dials.reliefBright); relief.mesh.visible=state.showRelief;
@@ -178,6 +181,7 @@ const handlers={
   onToggle:(name,v)=>{
     if(name==='struct'){ state.showStruct=v; structures.group.visible=v; }
     else if(name==='foot'){ state.showFoot=v; structures.footGroup.visible=v; }
+    else if(name==='exp'){ state.showExp=v; expObj.group.visible=v; }
     else if(name==='scan'){ state.showScan=v; scan.mesh.visible=v; }
     else if(name==='infer'){ state.showInfer=v; scan.setInfer(v?1:0); }
     else if(name==='theory') state.showTheory=v;
@@ -249,6 +253,35 @@ function spawnMarker(f){
   return {name:f.name, group:g, dot, label, dotMat, labelMat:label.material, visible:true};
 }
 
+// ---------- experiment pins (muography / neutrino / geoneutrino) ----------
+const EXP_GEO=new THREE.OctahedronGeometry(0.017, 0);
+function buildExperimentPins(){
+  const group=new THREE.Group(); group.renderOrder=9;
+  const pins=[], pickDots=[];
+  for(const e of EXPERIMENTS){
+    const k=EXP_KIND[e.kind], colHex='#'+k.color.toString(16).padStart(6,'0');
+    const p=latLonToVec3(e.lat, e.lon, 1.02);
+    const dotMat=new THREE.MeshBasicMaterial({color:k.color, transparent:true, depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending});
+    const dot=new THREE.Mesh(EXP_GEO, dotMat); dot.position.copy(p); dot.renderOrder=9; dot.userData={exp:e};
+    const label=makeLabel(e.name, colHex); label.position.copy(p).addScaledVector(p.clone().normalize(),0.045); label.renderOrder=10;
+    group.add(dot); group.add(label);
+    pins.push({exp:e, dot, label, dotMat, labelMat:label.material}); pickDots.push(dot);
+  }
+  return {group, pins, pickDots};
+}
+function pickExp(cx,cy){
+  const r=renderer.domElement.getBoundingClientRect();
+  ptr.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
+  raycaster.setFromCamera(ptr,camera);
+  const h=raycaster.intersectObjects(expObj.pickDots,false);
+  return h.length?h[0].object.userData.exp:null;
+}
+function expTipHTML(e){
+  const k=EXP_KIND[e.kind];
+  return `<b>${e.name}</b><span class="tip-type">${k.label}${e.year?' · '+e.year:''}</span>`+
+    `<span class="tip-d">${e.reveals}<br>${e.reach}${e.src?' · click for source ↗':''}</span>`;
+}
+
 // ---------- dive ----------
 let diveTarget=null;
 function startDive(){ stopTour(); state.diving=true; ui.dive(true); if(state.depth>=EARTH_RADIUS-5) setDepth(0); }
@@ -293,8 +326,10 @@ function initPicking(){
   const el=renderer.domElement;
   el.addEventListener('pointerdown',e=>{ downPos={x:e.clientX,y:e.clientY}; });
   el.addEventListener('pointermove',e=>{
-    if(state.focused || !structures.group.visible){ return; }
-    const f=pickAt(e.clientX,e.clientY); hovered=f;
+    if(state.focused){ return; }
+    const exp=(expObj && expObj.group.visible)?pickExp(e.clientX,e.clientY):null;
+    if(exp){ ui.tipHTML(expTipHTML(exp), e.clientX, e.clientY); el.style.cursor='pointer'; structures.setHover(null); structures.setFootHover(null); hovered=null; return; }
+    const f=structures.group.visible?pickAt(e.clientX,e.clientY):null; hovered=f;
     structures.setFootHover(f); structures.setHover(f);
     if(f){ ui.tip(f, e.clientX, e.clientY); el.style.cursor='pointer'; }
     else { ui.tip(null); el.style.cursor=''; }
@@ -302,7 +337,10 @@ function initPicking(){
   el.addEventListener('pointerleave',()=>{ ui.tip(null); structures.setFootHover(null); structures.setHover(null); });
   el.addEventListener('click',e=>{
     if(downPos && Math.hypot(e.clientX-downPos.x,e.clientY-downPos.y)>6) return; // was a drag
-    if(state.focused || !structures.group.visible) return;
+    if(state.focused) return;
+    const exp=(expObj && expObj.group.visible)?pickExp(e.clientX,e.clientY):null;
+    if(exp){ if(exp.src) window.open(exp.src,'_blank','noopener'); return; }
+    if(!structures.group.visible) return;
     const f=pickAt(e.clientX,e.clientY); if(f) enterFocus(f);
   });
 }
@@ -379,13 +417,17 @@ function animate(){
 // fade markers / coastlines by which hemisphere faces the camera
 const _c=new THREE.Vector3();
 function fadeMarkers(){
-  if(!markerGroup.visible) return;
   camera.getWorldPosition(_c); _c.normalize();
-  for(const m of markers){
+  if(markerGroup.visible) for(const m of markers){
     if(!m.visible) continue;
     const f=m.dot.position.clone().normalize().dot(_c);
     const o=THREE.MathUtils.smoothstep(f, -0.1, 0.35);
     m.labelMat.opacity=o; m.dotMat.opacity=Math.max(o,0.15);
+  }
+  if(expObj && expObj.group.visible) for(const m of expObj.pins){
+    const f=m.dot.position.clone().normalize().dot(_c);
+    const o=THREE.MathUtils.smoothstep(f, -0.05, 0.4);
+    m.labelMat.opacity=o; m.dotMat.opacity=Math.max(o*0.9,0.12);
   }
 }
 

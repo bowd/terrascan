@@ -59,11 +59,11 @@ const VERT=`precision highp float;
     float prox = 1.0 - smoothstep(0.0, uFocus, abs(aDepth-uCurDepth));
     float sel = (uFocusing>0.5 && abs(aFeature-uSelFeature)<0.5) ? 1.0 : 0.0;
     float hov = (abs(aFeature-uHoverFeature)<0.5) ? 1.0 : 0.0;   // body under the cursor
-    vHi = mix(0.30 + 1.05*prox, 1.35, sel) + hov*1.05;           // hovered body lights up
+    vHi = mix(0.30 + 1.05*prox, 1.35, sel) + hov*0.5;            // hovered body lifts gently
     vColor = mix(aColorA, aColorB, uMode);
     float vis = uFocusing<0.5 ? 1.0 : (sel>0.5 ? 1.4 : 0.05);
-    vA = aAlpha*vis*(1.0 + hov*0.95); vL = position;
-    vec3 wp = aOffset + position*aScale*(1.0+0.5*prox + hov*0.6);
+    vA = aAlpha*vis*(1.0 + hov*0.45); vL = position;
+    vec3 wp = aOffset + position*aScale*(1.0+0.5*prox + hov*0.3);
     gl_Position = projectionMatrix*modelViewMatrix*vec4(wp,1.0);
   }`;
 const FRAG=`precision highp float;

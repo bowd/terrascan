@@ -22,7 +22,7 @@ export function initControls(h){
   const tog=(id,name)=>$(id).addEventListener('change',e=>h.onToggle(name,e.target.checked));
   tog('#t-struct','struct'); tog('#t-scan','scan'); tog('#t-infer','infer'); tog('#t-theory','theory');
   tog('#t-relief','relief'); tog('#t-coast','coast'); tog('#t-borders','borders');
-  tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-spin','spin');
+  tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-exp','exp'); tog('#t-spin','spin');
 
   $('#focus-blend').addEventListener('input',e=>h.onFocus(+e.target.value/100));
   document.querySelectorAll('.dial').forEach(s=>s.addEventListener('input',()=>h.onDial(s.dataset.dial, +s.value/100)));
@@ -97,14 +97,16 @@ export function initControls(h){
     know(text){ $('#know').textContent=text; },
     reflectDials(norms){ document.querySelectorAll('.dial').forEach(s=>{ const v=norms[s.dataset.dial]; if(v!=null) s.value=Math.round(Math.max(0,Math.min(1,v))*100); }); },
     tip(f, x, y){
-      const el=$('#tip');
-      if(!f){ el.classList.add('hidden'); return; }
+      if(!f){ $('#tip').classList.add('hidden'); return; }
       const ti=TYPE_INFO[f.type]||{};
-      el.innerHTML=`<b>${f.name}</b>`+
+      this.tipHTML(`<b>${f.name}</b>`+
         `<span class="tip-type">${ti.label||f.type} · ${f.anomaly==='fast'?'fast = cold':'slow = hot'}</span>`+
-        `<span class="tip-d">${f.dTop.toLocaleString()}–${f.dBot.toLocaleString()} km · click to isolate</span>`;
+        `<span class="tip-d">${f.dTop.toLocaleString()}–${f.dBot.toLocaleString()} km · click to isolate</span>`, x, y);
+    },
+    tipHTML(html, x, y){
+      const el=$('#tip'); el.innerHTML=html;
       el.style.left=Math.min(window.innerWidth-232, x+15)+'px';
-      el.style.top=Math.min(window.innerHeight-70, y+15)+'px';
+      el.style.top=Math.min(window.innerHeight-80, y+15)+'px';
       el.classList.remove('hidden');
     },
     focusPanel(f){
