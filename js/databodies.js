@@ -7,9 +7,13 @@ import { EARTH_RADIUS, depthToUnit } from './earthModel.js';
 import { latLonToVec3 } from './geo.js';
 
 const COLD=[0.45,0.64,1.0], HOT=[1.0,0.40,0.30];
-const THRESH=0.6;     // |ΔVs| % to emit a structural blob
+const THRESH=0.85;    // |ΔVs| % to emit a structural blob (cores of real anomalies only)
 const STEP=2;         // lat/lon subsample
 
+// Blobs exist through the whole volume, but only the SHELL near the current depth
+// is drawn — opacity & size collapse away from it. Peeling the depth slider sweeps
+// the lit shell inward, so you read one clean structural surface at a time instead
+// of all 32 layers stacked into a glowing ball.
 const VERT=`precision highp float;
   uniform mat4 modelViewMatrix, projectionMatrix;
   uniform float uCurDepth,uFocus;
@@ -18,8 +22,8 @@ const VERT=`precision highp float;
   varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL;
   void main(){
     float prox = 1.0 - smoothstep(0.0, uFocus, abs(aDepth-uCurDepth));
-    vHi = 0.34 + 1.0*prox; vColor=aColor; vA=aAlpha; vL=position;
-    vec3 wp = aOffset + position*aScale*(1.0+0.5*prox);
+    vHi = 0.40 + 0.9*prox; vColor=aColor; vA=aAlpha*prox; vL=position;
+    vec3 wp = aOffset + position*aScale*(0.35+0.65*prox);   // shrink away from the lit shell
     gl_Position = projectionMatrix*modelViewMatrix*vec4(wp,1.0);
   }`;
 const FRAG=`precision highp float;
@@ -42,10 +46,10 @@ export function makeDataBodies(ens){
         const v=dvs[k]/dvsScale, ag=agree[k]/255;
         if(Math.abs(v)<THRESH || ag<0.3) continue;
         let p=latLonToVec3(lat, -180+(i+0.5)/nlon*360, rUnit);
-        const s=0.03; const maxR=0.985-s; if(p.length()>maxR) p.setLength(maxR);
+        const s=0.028; const maxR=0.985-s; if(p.length()>maxR) p.setLength(maxR);
         const c = v>0 ? COLD : HOT;
         off.push(p.x,p.y,p.z); scl.push(s); col.push(c[0],c[1],c[2]);
-        dep.push(dfrac); alp.push(Math.min(1,Math.abs(v)/2.0)*ag*0.6);
+        dep.push(dfrac); alp.push(Math.min(1,Math.abs(v)/2.0)*ag*0.85);
       }
     }
   }
@@ -61,7 +65,7 @@ export function makeDataBodies(ens){
   g.instanceCount=count;
   const mat=new THREE.RawShaderMaterial({ transparent:true, depthTest:false, depthWrite:false,
     blending:THREE.AdditiveBlending, vertexShader:VERT, fragmentShader:FRAG,
-    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.04}, uOpacity:{value:1} } });
+    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.016}, uOpacity:{value:1} } });
   const mesh=new THREE.Mesh(g,mat); mesh.frustumCulled=false; mesh.renderOrder=4;
   if(typeof console!=='undefined') console.log('data bodies:', count, 'blobs');
   return {

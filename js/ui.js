@@ -26,7 +26,7 @@ export function initControls(h){
   const tog=(id,name)=>$(id).addEventListener('change',e=>h.onToggle(name,e.target.checked));
   tog('#t-struct','struct'); tog('#t-scan','scan'); tog('#t-infer','infer'); tog('#t-theory','theory');
   tog('#t-relief','relief'); tog('#t-coast','coast'); tog('#t-borders','borders');
-  tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-exp','exp'); tog('#t-spin','spin');
+  tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-exp','exp'); tog('#t-spin','spin'); tog('#t-drill','drill');
 
   $('#focus-blend').addEventListener('input',e=>h.onFocus(+e.target.value/100));
   document.querySelectorAll('.dial').forEach(s=>s.addEventListener('input',()=>h.onDial(s.dataset.dial, +s.value/100)));
@@ -100,6 +100,7 @@ export function initControls(h){
     dataBody(html){ $('#data-body').innerHTML=html; },
     know(text){ $('#know').textContent=text; },
     sourceNote(t){ $('#scan-source-note').textContent=t; },
+    drillStatus(t){ const e=$('#drill-status'); if(e){ e.textContent=t||''; e.classList.toggle('on', !!t); } },
     reflectDials(norms){ document.querySelectorAll('.dial').forEach(s=>{ const v=norms[s.dataset.dial]; if(v!=null) s.value=Math.round(Math.max(0,Math.min(1,v))*100); }); },
     tip(f, x, y){
       if(!f){ $('#tip').classList.add('hidden'); return; }

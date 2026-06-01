@@ -103,6 +103,20 @@ await page.waitForTimeout(1700); await page.screenshot({path:'shots/17-focus.png
 console.log('focus:', await page.evaluate(()=>(!document.querySelector('#focus').classList.contains('hidden'))+' / '+document.querySelector('#focus-name').textContent));
 await page.keyboard.press('Escape'); await page.waitForTimeout(700);
 
+// drill-zoom experiment: dive (build tape), rotate around the subsurface pivot, rewind
+await setChk('#t-drill', true); await setDepth(0); await page.waitForTimeout(500);
+const dcx=344+(1500-344)/2, dcy=460;
+await page.mouse.move(dcx,dcy);
+for(let i=0;i<4;i++){ await page.mouse.wheel(0,-320); await page.waitForTimeout(480); }
+await page.screenshot({path:'shots/25-drill-in.png'});
+console.log('drill status:', await page.evaluate(()=>document.querySelector('#drill-status').textContent));
+await page.mouse.move(dcx,dcy); await page.mouse.down(); await page.mouse.move(dcx-180,dcy,{steps:16}); await page.mouse.up();
+await page.waitForTimeout(600); await page.screenshot({path:'shots/26-drill-rotate.png'});
+for(let i=0;i<5;i++){ await page.mouse.wheel(0,320); await page.waitForTimeout(480); }
+await page.screenshot({path:'shots/27-drill-rewind.png'});
+console.log('drill after rewind:', '['+(await page.evaluate(()=>document.querySelector('#drill-status').textContent))+']');
+await setChk('#t-drill', false);
+
 console.log('--- PAGE ERRORS ---'); console.log(errors.length?errors.join('\n'):'(none)');
 console.log('--- CONSOLE errors/warnings ---');
 console.log(logs.filter(l=>/error|warn|fail|exception/i.test(l)).slice(0,30).join('\n')||'(none)');

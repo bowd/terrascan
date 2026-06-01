@@ -44,6 +44,8 @@ controls.addEventListener('start', ()=>{        // any manual grab takes over cl
   if(state.touring) stopTour();
   if(glideCam){ if(glideTarget) controls.target.copy(glideTarget); glideCam=null; glideTarget=null; }
 });
+// drill-zoom: rotating updates the current tape waypoint so rewinding restores orientation too
+controls.addEventListener('end', ()=>{ if(state.drillNav && !navCam && tape[navIdx]) tape[navIdx]={target:controls.target.clone(), camPos:camera.position.clone()}; });
 
 // ---------- scenes ----------
 const theoryScene=new THREE.Scene();
@@ -58,8 +60,10 @@ const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
   showStruct:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
   showBorders:false, showMarkers:true, showFoot:false, showExp:false, spin:true,
-  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'synth',
+  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'synth', drillNav:false,
 };
+// drill-zoom navigation "tape": waypoints of {orbit target, camera position}
+let tape=[], navIdx=0, navCam=null, navTarget=null;
 
 // ---------- tunable dials (every magic number, live) ----------
 const DIAL_RANGE={ reliefOpacity:[0,1], reliefBright:[0.6,1.8], coastOpacity:[0,0.9],
@@ -197,6 +201,9 @@ const handlers={
     else if(name==='borders'){ state.showBorders=v; bordersObj&&(bordersObj.visible=v); }
     else if(name==='markers'){ state.showMarkers=v; markerGroup.visible=v; }
     else if(name==='spin'){ state.spin=v; if(!state.touring) controls.autoRotate=v; }
+    else if(name==='drill'){ state.drillNav=v; controls.enableZoom=!v; controls.minDistance=v?0.06:1.28;
+      tape=[{target:controls.target.clone(), camPos:camera.position.clone()}]; navIdx=0; navCam=null; navTarget=null;
+      ui.drillStatus(v?'drill ▾ scroll in to dive · out to rewind':''); }
   },
   onDial:(name,t)=>{ const r=DIAL_RANGE[name]; if(r) applyDial(name, r[0]+(r[1]-r[0])*t); },
   onFocus:(t)=>applyFocus(t),
@@ -365,6 +372,8 @@ function initPicking(){
     else { ui.tip(null); el.style.cursor=''; }
   });
   el.addEventListener('pointerleave',()=>{ ui.tip(null); structures.setFootHover(null); structures.setHover(null); });
+  el.addEventListener('wheel', drillWheel, {passive:false});
+  tape=[{target:controls.target.clone(), camPos:camera.position.clone()}]; navIdx=0;
   el.addEventListener('click',e=>{
     if(downPos && Math.hypot(e.clientX-downPos.x,e.clientY-downPos.y)>6) return; // was a drag
     if(state.focused) return;
@@ -399,6 +408,32 @@ function exitFocus(){
   state.focused=null; controls.autoRotate=state.spin;
 }
 
+// ---------- drill-zoom navigator (experimental) ----------
+// Scrolling IN walks the orbit pivot from the Earth's centre toward the surface point
+// under the camera (along the view normal), recording a "tape" of waypoints; you can
+// rotate around each subsurface pivot. Scrolling OUT rewinds the tape, restoring each
+// prior pivot AND the orientation you left it at — so the journey unwinds like a reel.
+function drillWheel(e){
+  if(!state.drillNav || state.focused) return;
+  e.preventDefault();
+  tape[navIdx]={target:controls.target.clone(), camPos:camera.position.clone()};   // sync current view
+  if(e.deltaY<0){                                          // dive: new, deeper waypoint
+    const surf=camera.position.clone().normalize().multiplyScalar(0.92);           // surface point facing camera
+    let nt=controls.target.clone().lerp(surf,0.4); if(nt.length()>0.92) nt.setLength(0.92);
+    const viewDir=camera.position.clone().sub(controls.target).normalize();
+    const nd=Math.max(0.22, camera.position.distanceTo(controls.target)*0.66);     // dolly closer
+    const nc=nt.clone().add(viewDir.multiplyScalar(nd));
+    tape=tape.slice(0,navIdx+1); tape.push({target:nt,camPos:nc}); navIdx++;
+    navCam=nc.clone(); navTarget=nt.clone();
+  } else {                                                 // rewind one step along the tape
+    if(navIdx>0){ navIdx--; navCam=tape[navIdx].camPos.clone(); navTarget=tape[navIdx].target.clone(); }
+    else { const vd=camera.position.clone().sub(controls.target).normalize();      // at base: plain dolly out
+      const d=Math.min(7, camera.position.distanceTo(controls.target)*1.3);
+      navCam=controls.target.clone().add(vd.multiplyScalar(d)); navTarget=controls.target.clone(); }
+  }
+  ui.drillStatus(navIdx>0 ? ('drill ▾ '+navIdx+' · scroll out to rewind') : '');
+}
+
 // ---------- loop ----------
 const clock=new THREE.Clock();
 function animate(){
@@ -428,6 +463,11 @@ function animate(){
     camera.position.lerp(glideCam, Math.min(1,dt*2.4));
     controls.target.lerp(glideTarget, Math.min(1,dt*2.4));
     if(camera.position.distanceTo(glideCam)<0.03){ controls.target.copy(glideTarget); glideCam=null; glideTarget=null; }
+  }
+  if(navCam){                                            // drill-zoom: glide to a tape waypoint
+    camera.position.lerp(navCam, Math.min(1,dt*3.4));
+    controls.target.lerp(navTarget, Math.min(1,dt*3.4));
+    if(camera.position.distanceTo(navCam)<0.015){ controls.target.copy(navTarget); navCam=null; navTarget=null; }
   }
 
   theoryShells.userData.tick(t);
