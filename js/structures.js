@@ -123,11 +123,15 @@ function buildFootprints(footData){
     group.add(new THREE.Line(sg,smat));
     byFeature.set(f,{lmat,smat});
   }
+  let soloFeat=null;   // while set (focus mode) ONLY this footprint shows and hover is ignored
   function setFootHover(f){
+    if(soloFeat) return;                          // soloed -> never light up the others on hover
     for(const [,m] of byFeature){ m.lmat.opacity=0.55; m.smat.opacity=0.15; }
     if(f && byFeature.has(f)){ const m=byFeature.get(f); m.lmat.opacity=0.95; m.smat.opacity=0.5; }
   }
-  function setFootSolo(f){   // for focus: show only this feature's footprint
+  function setFootSolo(f){   // focus: show ONLY this feature's footprint; setFootSolo(null) clears the lock
+    soloFeat = f || null;
+    if(!f){ for(const [,m] of byFeature){ m.lmat.opacity=0.55; m.smat.opacity=0.15; } return; }
     for(const [feat,m] of byFeature){ const on=feat===f; m.lmat.opacity=on?1.0:0.0; m.smat.opacity=on?0.6:0.0; }
   }
   return {group, setFootHover, setFootSolo};
@@ -189,7 +193,7 @@ export function makeStructures(){
 
   const mat=new THREE.RawShaderMaterial({ transparent:true, depthTest:true, depthWrite:true,
     side:THREE.FrontSide, blending:THREE.NormalBlending, vertexShader:VERT, fragmentShader:FRAG,
-    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.03}, uMode:{value:0}, uOpacity:{value:0.95},
+    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.03}, uMode:{value:0}, uOpacity:{value:0.7},
       uGlow:{value:1.0}, uSize:{value:0.85}, uDataLink:{value:0},
       uSelFeature:{value:-1}, uFocusing:{value:0}, uHoverFeature:{value:-1}, uClip:{value:0} } });
 

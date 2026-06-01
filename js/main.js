@@ -80,10 +80,10 @@ const BAND_NARROW=35, BAND_WIDE=640, BAND_VREF=720; // km band width vs descent 
 // ---------- tunable dials (every magic number, live) ----------
 const DIAL_RANGE={ reliefOpacity:[0,1], reliefBright:[0.6,1.8], coastOpacity:[0,0.9],
   scanStrength:[0,1], scanGain:[0.4,1.8], scanFloor:[0,0.5],
-  modelGain:[0,2], modelHaze:[0,1], bodyOpacity:[0,1.2], bodyGlow:[0,1.6], bodySize:[0.4,1.8], dataLink:[0,1], focusBand:[0.008,0.12] };
+  modelGain:[0,2], modelHaze:[0,1], bodyOpacity:[0,1.2], featOpacity:[0,1.2], bodyGlow:[0,1.6], bodySize:[0.4,1.8], dataLink:[0,1], focusBand:[0.008,0.12] };
 const dials={ reliefOpacity:0.88, reliefBright:1.12, coastOpacity:0.42,
   scanStrength:0.8, scanGain:1.2, scanFloor:0.16,
-  modelGain:1.0, modelHaze:0.62, bodyOpacity:0.9, bodyGlow:0.7, bodySize:0.8, dataLink:0.0, focusBand:0.03 };
+  modelGain:1.0, modelHaze:0.62, bodyOpacity:0.9, featOpacity:0.7, bodyGlow:0.7, bodySize:0.8, dataLink:0.0, focusBand:0.03 };
 function applyDial(name,v){ dials[name]=v;
   if(name==='reliefOpacity') setReliefOpacity();
   else if(name==='reliefBright') relief&&relief.setBright(v);
@@ -91,7 +91,8 @@ function applyDial(name,v){ dials[name]=v;
   else if(name==='scanStrength') scan&&scan.setOpacity(v);
   else if(name==='scanGain') scan&&scan.setGain(v);
   else if(name==='scanFloor') scan&&scan.setCovFloor(v);
-  else if(name==='bodyOpacity'){ structures&&structures.setOpacity(v); dataBodies&&dataBodies.setOpacity(v); clusterParams.opacity=v; }
+  else if(name==='bodyOpacity'){ dataBodies&&dataBodies.setOpacity(v); clusterParams.opacity=v; }   // measured data mesh
+  else if(name==='featOpacity') structures&&structures.setOpacity(v);    // extracted features (separate)
   else if(name==='bodyGlow') structures&&structures.setGlow(v);          // 3-D body brightness
   else if(name==='bodySize') structures&&structures.setSize(v);          // 3-D body blob size
   else if(name==='dataLink') structures&&structures.setDataLink(v);      // tie bodies to measured survey support
@@ -107,7 +108,8 @@ function applyFocus(t){
   applyDial('scanStrength', 0.62+0.3*t);
   applyDial('modelGain', 0.5+1.1*t);             // the fuzzy subsurface brightens
   applyDial('modelHaze', 0.35+0.5*t);            // ...and gets hazier/fuzzier
-  applyDial('bodyOpacity', 0.65+0.4*t);
+  applyDial('bodyOpacity', 0.65+0.4*t);          // measured data mesh
+  applyDial('featOpacity', 0.45+0.35*t);         // extracted features
   ui&&ui.reflectDials(dialNorms());
 }
 // peel-back: the relief skin is opaque at the surface and fades as you descend,
@@ -533,14 +535,14 @@ function enterFocus(f){
 function exitFocus(){
   if(!state.focused) return;
   document.body.classList.remove('focusing');
-  structures.focus(null); structures.setFootHover(null); structures.footGroup.visible=state.showFoot;
-  earthWire.visible=false; ui.focusPanel(null);
-  scan.mesh.visible=state.showScan; markerGroup.visible=state.showMarkers; setReliefOpacity();
-  if(dataBodies) dataBodies.group.visible=state.showBodies;
-  coastObj&&(coastObj.visible=state.showCoast); gratObj&&(gratObj.visible=state.showCoast);
+  structures.focus(null); structures.setFootSolo(null); structures.footGroup.visible=state.showFoot;
+  earthWire.visible=false; ui.focusPanel(null); markerGroup.visible=state.showMarkers;
+  state.focused=null;
+  applyPeel();             // restore peel render-orders + every layer's visibility
+  setDepth(state.depth);   // restore the cut, depth band, body depth & relief opacity at this depth
   glideTarget=new THREE.Vector3(0,0,0);                 // the globe pivot is always the origin
   glideCam=savedCam?savedCam.clone():new THREE.Vector3(0.2,0.9,3.0);
-  state.focused=null; controls.autoRotate=state.spin;
+  controls.autoRotate=state.spin;
 }
 
 // ---------- drill-zoom navigator (experimental) ----------
