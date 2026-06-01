@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: terrascan
+  labels:
+    app.kubernetes.io/name: terrascan
+    app.kubernetes.io/part-of: terrascan

@@ -1,0 +1,13 @@
+.git
+.gitignore
+.dockerignore
+node_modules
+deploy/*
+!deploy/nginx.conf
+shots
+assets
+build-geo.mjs
+shoot.mjs
+package.json
+package-lock.json
+README.md

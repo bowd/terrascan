@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: terrascan
+  namespace: terrascan
+  labels:
+    app.kubernetes.io/name: terrascan
+    app.kubernetes.io/part-of: terrascan
+  annotations:
+    solace.internal/description: TERRASCAN static site (three.js earth-interior viewer)
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: terrascan.solace.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: terrascan
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - terrascan.solace.internal
+      secretName: solace-wildcard-tls

@@ -65,6 +65,19 @@ so it works under a project subpath (`user.github.io/repo/`):
    `main` / `/ (root)`.
 3. Open the published URL. (`.nojekyll` is included so all files are served verbatim.)
 
+## Deployed internally
+
+Live on the home cluster at **https://terrascan.solace.internal/** — nginx on
+k3s behind Traefik, in its own `terrascan` namespace. Build artifacts are in
+`deploy/` (`Dockerfile`, `nginx.conf`, `k8s/` manifests). This k3s runs
+cri-dockerd, so a locally-built docker image is visible to the cluster directly
+— no containerd import. Re-deploy a new build with:
+
+```bash
+docker build -t terrascan:v1 -f deploy/Dockerfile .
+kubectl -n terrascan rollout restart deploy/terrascan
+```
+
 ## How it's built
 
 ```
