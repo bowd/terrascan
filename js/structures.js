@@ -1,18 +1,19 @@
-// structures.js — features as a blob FIELD placed in true (lat,lon,depth) space
-// so it always hugs the globe (never tangential / never pokes out). Each feature
-// is drawn at two scales at once: many small blobs (raw resolution) + a sparse
-// set of big soft blobs (the low-res "cluster" / rough shape). One additive
-// instanced cloud for looks; light invisible proxies for hover/extract picking.
+// structures.js — "Extracted features": the hand-curated named structures (slabs, LLSVPs,
+// plumes, cratons, ridges) rendered as smooth translucent SURFACES — one oriented ellipsoid
+// per feature, sized to its published extent and aligned tangent to the globe. Deliberately
+// a DIFFERENT palette from the measured data bodies (azure / amber vs deep blue / red) so the
+// interpretation reads distinctly from the data. Footprints + invisible pick proxies as before.
 import * as THREE from 'three';
 import { FEATURES, CATEGORY } from './tomography.js';
 import { EARTH_RADIUS, depthToUnit } from './earthModel.js';
 import { latLonToVec3 } from './geo.js';
 
-const ANOM = { fast:[0.42,0.62,1.0], slow:[1.0,0.38,0.30] };
+// distinct shades from the data bodies' deep blue/red — keep cold/hot coding, shift hue:
+const ANOM = { fast:[0.45,0.82,1.0], slow:[1.0,0.62,0.28] };   // azure (cold) · amber (hot)
 const catRGB = (id)=>{ const c=new THREE.Color(Object.values(CATEGORY).sort((a,b)=>a.id-b.id)[id].color); return [c.r,c.g,c.b]; };
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
 
-// per-type DETAIL sampling: points in (lat,lon,depth) — the raw resolution
+// per-type DETAIL sampling: points in (lat,lon,depth) — used to build the surface footprints
 function sampleDetail(f, rnd){
   const pts=[], span=f.dBot-f.dTop, push=(lat,lon,depth,scale)=>pts.push([lat,lon,depth,scale]);
   if(f.type==='plume'){
@@ -49,34 +50,41 @@ function sampleDetail(f, rnd){
   return pts;
 }
 
-const VERT=`precision highp float;
-  uniform mat4 modelViewMatrix, projectionMatrix;
+// ---- per-feature ellipsoid SURFACE shader (instanced) --------------------------
+const VERT=`
+  attribute float aDepth, aAlpha, aFeature, aSupport;
+  attribute vec3 aColorA, aColorB;
   uniform float uCurDepth,uFocus,uMode,uSelFeature,uFocusing,uHoverFeature,uSize;
-  attribute vec3 position, aOffset, aColorA, aColorB;
-  attribute float aScale, aDepth, aAlpha, aFeature, aSupport;
-  varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL; varying float vAD; varying float vSup;
+  varying float vAD; varying float vSup; varying float vHi; varying float vA;
+  varying vec3 vColor; varying vec3 vN; varying vec3 vView;
   void main(){
     vAD = aDepth; vSup = aSupport;
     float prox = 1.0 - smoothstep(0.0, uFocus, abs(aDepth-uCurDepth));
-    float sel = (uFocusing>0.5 && abs(aFeature-uSelFeature)<0.5) ? 1.0 : 0.0;
-    float hov = (abs(aFeature-uHoverFeature)<0.5) ? 1.0 : 0.0;   // body under the cursor
-    vHi = mix(0.24 + 0.82*prox, 1.05, sel) + hov*0.4;            // softer: dimmer, gentler depth pop
+    float sel  = (uFocusing>0.5 && abs(aFeature-uSelFeature)<0.5) ? 1.0 : 0.0;
+    float hov  = (abs(aFeature-uHoverFeature)<0.5) ? 1.0 : 0.0;
+    vHi = mix(0.5 + 0.5*prox, 1.2, sel) + hov*0.35;
     vColor = mix(aColorA, aColorB, uMode);
-    float vis = uFocusing<0.5 ? 1.0 : (sel>0.5 ? 1.4 : 0.05);
-    vA = aAlpha*vis*(1.0 + hov*0.45); vL = position;
-    vec3 wp = aOffset + position*aScale*uSize*(1.32+0.4*prox + hov*0.3);   // uSize = global body-size dial
-    gl_Position = projectionMatrix*modelViewMatrix*vec4(wp,1.0);
+    float vis = uFocusing<0.5 ? 1.0 : (sel>0.5 ? 1.3 : 0.04);
+    vA = aAlpha*vis*(1.0 + hov*0.4);
+    vec3 lp = position*uSize;                                  // uSize = global body-size dial
+    vec4 mv = modelViewMatrix*instanceMatrix*vec4(lp,1.0);
+    vN = normalize(normalMatrix*mat3(instanceMatrix)*normal);
+    vView = normalize(-mv.xyz);
+    gl_Position = projectionMatrix*mv;
   }`;
-const FRAG=`precision highp float;
-  uniform float uOpacity, uGlow, uDataLink;
-  uniform float uClip, uCurDepth;
-  varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL; varying float vAD; varying float vSup;
+const FRAG=`
+  uniform float uOpacity, uGlow, uDataLink, uClip, uCurDepth;
+  varying float vAD; varying float vSup; varying float vHi; varying float vA;
+  varying vec3 vColor; varying vec3 vN; varying vec3 vView;
   void main(){
-    if(uClip>0.5 && vAD < uCurDepth - 0.001) discard;
-    float edge=0.66+0.34*clamp(vL.z*0.5+0.5,0.0,1.0);   // gentler shade -> softer, less hard-lit
-    // survey link: fade each blob toward how much the MEASURED ensemble supports it there
-    float link = mix(1.0, vSup, uDataLink);
-    gl_FragColor=vec4(vColor*vHi*edge*vA*uOpacity*uGlow*link, 1.0);
+    if(uClip>0.5 && vAD < uCurDepth - 0.001) discard;          // cutaway: drop above the cut
+    float ndv = abs(dot(normalize(vN), normalize(vView)));
+    float fres = pow(1.0-ndv, 2.5);                            // bright rim -> reads as a surface/membrane
+    float link = mix(1.0, vSup, uDataLink);                    // survey link: fade toward measured support
+    vec3 col = vColor*(0.34*vHi) + vColor*fres*0.95;
+    float a  = (0.085 + 0.55*fres) * vHi * vA * uOpacity * uGlow * link;
+    if(a < 0.004) discard;
+    gl_FragColor = vec4(col, a);
   }`;
 
 // 2D convex hull (monotone chain)
@@ -105,7 +113,7 @@ function buildFootprints(footData){
       const dir=com.clone().multiplyScalar(Math.sqrt(k)).addScaledVector(u,p.x).addScaledVector(v,p.y).normalize();
       verts.push(dir.x*1.002, dir.y*1.002, dir.z*1.002);
     }
-    const col=f.anomaly==='fast'?0x6f9bff:0xff6b5a;
+    const col=f.anomaly==='fast'?0x6fd0ff:0xffae5a;   // match the azure/amber feature palette
     const lg=new THREE.BufferGeometry(); lg.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
     const lmat=new THREE.LineBasicMaterial({color:col,transparent:true,opacity:0.55,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending});
     const loop=new THREE.LineLoop(lg,lmat); loop.renderOrder=6; group.add(loop);
@@ -127,63 +135,58 @@ function buildFootprints(footData){
 
 export function makeStructures(){
   const rnd=mulberry32(20260601);
-  const off=[],scl=[],ca=[],cb=[],dep=[],alp=[],fea=[];
-  const llt=[],lln=[],ldp=[];   // per-blob lat/lon/depth, for sampling the measured field
-  const pickProxies=[]; const info=new Map(); const footData=[];
+  const N=FEATURES.length;
+  const aDep=new Float32Array(N), aCa=new Float32Array(N*3), aCb=new Float32Array(N*3),
+        aAl=new Float32Array(N), aFe=new Float32Array(N), aSup=new Float32Array(N).fill(1);
+  const llt=new Float32Array(N), lln=new Float32Array(N), ldp=new Float32Array(N);
+  const mats=[]; const pickProxies=[]; const info=new Map(); const footData=[];
   const proxyGeo=new THREE.SphereGeometry(1,8,6), proxyMat=new THREE.MeshBasicMaterial();
-  let fi=0;
+  const east=new THREE.Vector3(), north=new THREE.Vector3(), radial=new THREE.Vector3(), up=new THREE.Vector3();
+  const DEG=Math.PI/180;
 
-  function add(lat,lon,depth,scale,alpha,fidx,aCol,bCol){
-    let p=latLonToVec3(lat,lon,depthToUnit(depth));
-    const maxR=0.985-scale; if(p.length()>maxR) p.setLength(Math.max(0.05,maxR)); // keep blobs inside the globe
-    off.push(p.x,p.y,p.z); scl.push(scale);
-    ca.push(aCol[0],aCol[1],aCol[2]); cb.push(bCol[0],bCol[1],bCol[2]);
-    dep.push(1.0-p.length()); alp.push(alpha); fea.push(fidx);
-    llt.push(lat); lln.push(lon); ldp.push(depth);
-    return p;
-  }
-
-  for(const f of FEATURES){
+  FEATURES.forEach((f, fi)=>{
     const midD=(f.dTop+f.dBot)/2, rC=depthToUnit(midD);
-    const aCol=ANOM[f.anomaly], bCol=catRGB(CATEGORY[f.type].id);
-    const det=sampleDetail(f,rnd);
-    footData.push({f, dirs:det.map(([la,lo])=>latLonToVec3(la,lo,1)), midR:rC});
-    const bigR=Math.max(0.05, Math.min(0.12, Math.max(f.latExt,f.lonExt)*Math.PI/180*rC*0.42));
-    const stride=Math.max(2, Math.floor(det.length/12));
-    for(let i=0;i<det.length;i++){
-      const [lat,lon,depth,scale]=det[i];
-      add(lat,lon,depth,scale,0.42,fi,aCol,bCol);                 // raw-resolution detail (softer)
-      if(i%stride===0){                                           // sparse low-res cluster blob
-        const p=add(lat,lon,depth,bigR,0.28,fi,aCol,bCol);
-        const pr=new THREE.Mesh(proxyGeo,proxyMat); pr.position.copy(p); pr.scale.setScalar(bigR*1.15);
-        pr.userData={feature:f}; pr.updateMatrixWorld(); pickProxies.push(pr);
-      }
-    }
-    info.set(f,{ center:latLonToVec3(f.lat,f.lon,rC), index:fi,
-      radius:Math.max(bigR, Math.max(f.latExt,f.lonExt)*Math.PI/180*rC, (f.dBot-f.dTop)/2/EARTH_RADIUS*0.7) });
-    fi++;
-  }
+    const p=latLonToVec3(f.lat,f.lon,rC);
+    radial.copy(p).normalize();
+    up.set(0,1,0); if(Math.abs(radial.y)>0.98) up.set(1,0,0);
+    east.crossVectors(up,radial).normalize();
+    north.crossVectors(radial,east).normalize();
+    // half-extents (tangential from the published angular size; radial from the depth span)
+    let sRad=Math.max(0.012,(f.dBot-f.dTop)/2/EARTH_RADIUS);
+    if(rC+sRad>0.985) sRad=Math.max(0.008,0.985-rC);                 // keep the body inside the globe
+    const sEast=Math.max(0.02, f.lonExt*DEG*rC);
+    const sNorth=Math.max(0.02, f.latExt*DEG*rC);
+    const m=new THREE.Matrix4().makeBasis(east,north,radial);
+    m.setPosition(p); m.scale(new THREE.Vector3(sEast,sNorth,sRad));
+    mats.push(m);
+    aDep[fi]=midD/EARTH_RADIUS;
+    const ac=ANOM[f.anomaly], bc=catRGB(CATEGORY[f.type].id);
+    aCa[fi*3]=ac[0]; aCa[fi*3+1]=ac[1]; aCa[fi*3+2]=ac[2];
+    aCb[fi*3]=bc[0]; aCb[fi*3+1]=bc[1]; aCb[fi*3+2]=bc[2];
+    aAl[fi]=1.0; aFe[fi]=fi; llt[fi]=f.lat; lln[fi]=f.lon; ldp[fi]=midD;
+    const pr=new THREE.Mesh(proxyGeo,proxyMat); pr.position.copy(p);
+    pr.scale.setScalar(Math.max(sEast,sNorth,sRad)*0.9); pr.userData={feature:f}; pr.updateMatrixWorld(); pickProxies.push(pr);
+    info.set(f,{ center:p.clone(), index:fi, radius:Math.max(sEast,sNorth,sRad) });
+    footData.push({f, dirs:sampleDetail(f,rnd).map(([la,lo])=>latLonToVec3(la,lo,1)), midR:rC});
+  });
 
-  const base=new THREE.IcosahedronGeometry(1,2);   // rounder blobs (smoother, softer silhouettes)
-  const g=new THREE.InstancedBufferGeometry();
-  g.index=base.index; g.setAttribute('position', base.attributes.position);
-  g.setAttribute('aOffset', new THREE.InstancedBufferAttribute(new Float32Array(off),3));
-  g.setAttribute('aScale',  new THREE.InstancedBufferAttribute(new Float32Array(scl),1));
-  g.setAttribute('aColorA', new THREE.InstancedBufferAttribute(new Float32Array(ca),3));
-  g.setAttribute('aColorB', new THREE.InstancedBufferAttribute(new Float32Array(cb),3));
-  g.setAttribute('aDepth',  new THREE.InstancedBufferAttribute(new Float32Array(dep),1));
-  g.setAttribute('aAlpha',  new THREE.InstancedBufferAttribute(new Float32Array(alp),1));
-  g.setAttribute('aFeature',new THREE.InstancedBufferAttribute(new Float32Array(fea),1));
-  g.setAttribute('aSupport',new THREE.InstancedBufferAttribute(new Float32Array(scl.length).fill(1),1)); // measured support, 1 until sampled
-  g.instanceCount=scl.length;
+  const base=new THREE.IcosahedronGeometry(1,3);   // smooth ellipsoid
+  base.setAttribute('aDepth',  new THREE.InstancedBufferAttribute(aDep,1));
+  base.setAttribute('aColorA', new THREE.InstancedBufferAttribute(aCa,3));
+  base.setAttribute('aColorB', new THREE.InstancedBufferAttribute(aCb,3));
+  base.setAttribute('aAlpha',  new THREE.InstancedBufferAttribute(aAl,1));
+  base.setAttribute('aFeature',new THREE.InstancedBufferAttribute(aFe,1));
+  base.setAttribute('aSupport',new THREE.InstancedBufferAttribute(aSup,1));
 
-  const mat=new THREE.RawShaderMaterial({ transparent:true, depthTest:false, depthWrite:false,
-    blending:THREE.AdditiveBlending, vertexShader:VERT, fragmentShader:FRAG,
-    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.03}, uMode:{value:0}, uOpacity:{value:0.85},
-      uGlow:{value:0.7}, uSize:{value:0.8}, uDataLink:{value:0},
+  const mat=new THREE.ShaderMaterial({ transparent:true, depthTest:false, depthWrite:false,
+    side:THREE.DoubleSide, blending:THREE.NormalBlending, vertexShader:VERT, fragmentShader:FRAG,
+    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.03}, uMode:{value:0}, uOpacity:{value:0.9},
+      uGlow:{value:0.7}, uSize:{value:0.9}, uDataLink:{value:0},
       uSelFeature:{value:-1}, uFocusing:{value:0}, uHoverFeature:{value:-1}, uClip:{value:0} } });
 
-  const mesh=new THREE.Mesh(g,mat); mesh.frustumCulled=false; mesh.renderOrder=4;
+  const mesh=new THREE.InstancedMesh(base, mat, N); mesh.frustumCulled=false; mesh.renderOrder=4;
+  for(let i=0;i<N;i++) mesh.setMatrixAt(i, mats[i]);
+  mesh.instanceMatrix.needsUpdate=true;
   const foot=buildFootprints(footData);
 
   return {
@@ -195,9 +198,8 @@ export function makeStructures(){
     setGlow:(v)=>mat.uniforms.uGlow.value=v,
     setSize:(v)=>mat.uniforms.uSize.value=v,
     setDataLink:(v)=>mat.uniforms.uDataLink.value=v,
-    // sample the measured ensemble at each blob's (lat,lon,depth) -> per-blob "support" 0..1
-    setDataSupport:(fn)=>{ if(!fn) return; const a=g.getAttribute('aSupport');
-      for(let i=0;i<llt.length;i++) a.array[i]=fn(llt[i],lln[i],ldp[i]); a.needsUpdate=true; },
+    setDataSupport:(fn)=>{ if(!fn) return; const a=base.getAttribute('aSupport');
+      for(let i=0;i<N;i++) a.array[i]=fn(llt[i],lln[i],ldp[i]); a.needsUpdate=true; },
     setFocusBand:(v)=>mat.uniforms.uFocus.value=v,
     setHover:(f)=>{ mat.uniforms.uHoverFeature.value = f ? info.get(f).index : -1; },
     focus:(f)=>{ if(!f){ mat.uniforms.uFocusing.value=0; } else { mat.uniforms.uFocusing.value=1; mat.uniforms.uSelFeature.value=info.get(f).index; } },
