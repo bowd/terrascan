@@ -5,7 +5,6 @@ node_modules
 deploy/*
 !deploy/nginx.conf
 shots
-assets
 build-geo.mjs
 shoot.mjs
 package.json
