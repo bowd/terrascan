@@ -60,9 +60,9 @@ theoryScene.add(theoryShells);
 // ---------- state ----------
 const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
-  showStruct:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
+  showStruct:true, showBodies:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
   showBorders:false, showMarkers:true, showFoot:false, showExp:false, spin:true,
-  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'synth', drillNav:false, cutaway:false, reliefPeel:true,
+  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'real', drillNav:false, cutaway:false, reliefPeel:true,
 };
 // drill-zoom navigation "tape": waypoints of {orbit target, camera position}
 let tape=[], navIdx=0, navCam=null, navTarget=null;
@@ -167,8 +167,8 @@ function applyPeel(){                                     // peel: bring the sur
   if(relief){ relief.mesh.renderOrder = on?6:1; relief.water.renderOrder = on?6.05:2; }
   // keep the rest of the model present — you see it through the translucent surface and the cut
   if(scan) scan.mesh.visible      = state.showScan;
-  if(structures) structures.group.visible = (state.source==='real') ? false : state.showStruct;
-  if(dataBodies) dataBodies.group.visible  = (state.source==='real');
+  if(structures) structures.group.visible = state.showStruct;   // extracted features (independent layer)
+  if(dataBodies) dataBodies.group.visible  = state.showBodies;   // measured data bodies (independent layer)
   if(coastObj) coastObj.visible   = state.showCoast;
   if(gratObj)  gratObj.visible    = state.showCoast;
 }
@@ -284,7 +284,8 @@ const handlers={
   onColorMode:(m)=>{ state.mode=(m==='feature')?1:0; scan.setMode(state.mode); structures.setMode(state.mode); ui.colorMode(m);
     refreshFeaturePanel(); },
   onToggle:(name,v)=>{
-    if(name==='struct'){ state.showStruct=v; structures.group.visible=v; }
+    if(name==='struct'){ state.showStruct=v; structures.group.visible=v; }   // "Extracted features" (curated)
+    else if(name==='bodies'){ state.showBodies=v; if(dataBodies) dataBodies.group.visible=v; }  // measured 3-D data bodies
     else if(name==='foot'){ state.showFoot=v; structures.footGroup.visible=v; }
     else if(name==='exp'){ state.showExp=v; expObj.group.visible=v; }
     else if(name==='scan'){ state.showScan=v; scan.mesh.visible=v; }
@@ -312,12 +313,6 @@ const handlers={
   onVizStrategy:(name)=>{ clusterParams.strategy=name; if(dataBodies) dataBodies.setStrategy(name); },
   onDial:(name,t)=>{ const r=DIAL_RANGE[name]; if(r) applyDial(name, r[0]+(r[1]-r[0])*t); },
   onFocus:(t)=>applyFocus(t),
-  onSource:(s)=>{ state.source=s; scanField.setSource(s); builtDepth=-999;
-    structures.group.visible = (s==='real') ? false : state.showStruct;  // hand-built bodies step aside
-    if(dataBodies) dataBodies.group.visible = (s==='real');               // real data shown AS structures
-    ui.sourceNote(s==='real'
-      ? nModels+' real tomography models combined live (toggle models & tune clustering in the Data-pipeline panel), meshed into 3-D structures — blue = fast/cold (slabs), red = slow/hot (LLSVP piles, plumes). Built only where models agree.'
-      : 'A hand-built, geographically-faithful synthesis of published features.'); },
   onDive:()=>{ stopTour(); state.diving?stopDive():startDive(); },
   onTickJump:(d)=>{ stopTour(); stopDive(); animateTo(d); },
   onStep:(dz)=>{ stopTour(); stopDive(); setDepth(state.depth+dz); },
@@ -441,15 +436,16 @@ async function loadEnsemble(){
     syncClusterFromUI();                                      // adopt the panel's slider positions
     const c=engine.combined();
     scanField.setEnsemble(toScanEns(c));
+    scanField.setSource('real'); builtDepth=-999;            // the slice is always the measured ensemble now
     dataBodies=makeDataBodies(c, clusterParams);              // 3-D structures from the live ensemble (rebuilt in a Web Worker)
-    window.__dataBodies=dataBodies;                           // debug/verification hook (forceSync, group introspection)
-    dataBodies.group.visible=(state.source==='real');
-    dataBodies.setCurDepth(state.depth/EARTH_RADIUS);
+    window.__dataBodies=dataBodies;
+    dataBodies.group.visible=state.showBodies;
+    dataBodies.setCurDepth(Math.max(0,state.depth)/EARTH_RADIUS);
     dataBodies.setCutaway(state.cutaway);
     scanScene.add(dataBodies.group);
     ui.setModels(engine.list());
-    if(structures) structures.setDataSupport(bodySupportFn());   // link the synthesis bodies to the measured survey
-    const rb=document.querySelector('#datasrc button[data-src="real"]'); if(rb) rb.textContent='real · '+nModels+' models';
+    if(structures) structures.setDataSupport(bodySupportFn());   // link the extracted features to the measured survey
+    ui.sourceNote(nModels+' real tomography models, combined live. The bright slice is measured seismic speed at this depth; the 3-D "data bodies" are its structure. "Extracted features" are hand-curated named structures from the literature (see Guide).');
   }catch(e){ console.warn('models load failed', e); }
 }
 
@@ -668,13 +664,13 @@ function fail(msg){
 // The toggle name <-> state field map, so capture & restore stay in lock-step with
 // the handlers above. Names match handlers.onToggle(name,...) and the #t-* checkboxes.
 const TOGGLE_MAP = {
-  struct:'showStruct', scan:'showScan', infer:'showInfer', theory:'showTheory',
+  struct:'showStruct', bodies:'showBodies', scan:'showScan', infer:'showInfer', theory:'showTheory',
   relief:'showRelief', coast:'showCoast', borders:'showBorders', markers:'showMarkers',
   foot:'showFoot', exp:'showExp', spin:'spin', drill:'drillNav', cutaway:'cutaway',
   peel:'reliefPeel',
 };
 const TOGGLE_DOM = {  // checkbox id per toggle name (note #t-cut, not #t-cutaway)
-  struct:'#t-struct', scan:'#t-scan', infer:'#t-infer', theory:'#t-theory',
+  struct:'#t-struct', bodies:'#t-bodies', scan:'#t-scan', infer:'#t-infer', theory:'#t-theory',
   relief:'#t-relief', coast:'#t-coast', borders:'#t-borders', markers:'#t-markers',
   foot:'#t-foot', exp:'#t-exp', spin:'#t-spin', drill:'#t-drill', cutaway:'#t-cut',
   peel:'#t-peel',
@@ -702,8 +698,7 @@ function captureSettings(){
 
 function applySettings(s){
   if(!s || typeof s!=='object') return;
-  // 1) source + data pipeline (models / normalize / cluster / strategy) FIRST
-  if(s.source==='synth'||s.source==='real'){ handlers.onSource(s.source); ui.segmented('datasrc','src',s.source); }
+  // 1) data pipeline (models / normalize / cluster / strategy) FIRST  (source is always real now)
   if(engine){
     if(typeof s.normalize==='boolean'){ engine.setNormalize(s.normalize); ui.setChecked('#t-normalize', s.normalize); }
     if(Array.isArray(s.models)){

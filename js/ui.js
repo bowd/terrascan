@@ -19,13 +19,9 @@ export function initControls(h){
 
   document.querySelectorAll('#colormode button').forEach(b=>
     b.addEventListener('click', ()=>h.onColorMode(b.dataset.mode)));
-  document.querySelectorAll('#datasrc button').forEach(b=>b.addEventListener('click',()=>{
-    document.querySelectorAll('#datasrc button').forEach(x=>x.classList.toggle('active',x===b));
-    h.onSource(b.dataset.src);
-  }));
 
-  const tog=(id,name)=>$(id).addEventListener('change',e=>h.onToggle(name,e.target.checked));
-  tog('#t-struct','struct'); tog('#t-scan','scan'); tog('#t-infer','infer'); tog('#t-theory','theory');
+  const tog=(id,name)=>{ const e=$(id); if(e) e.addEventListener('change',ev=>h.onToggle(name,ev.target.checked)); };
+  tog('#t-struct','struct'); tog('#t-bodies','bodies'); tog('#t-scan','scan'); tog('#t-infer','infer'); tog('#t-theory','theory');
   tog('#t-relief','relief'); tog('#t-coast','coast'); tog('#t-borders','borders');
   tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-exp','exp'); tog('#t-spin','spin'); tog('#t-drill','drill');
   tog('#t-cut','cutaway'); tog('#t-normalize','normalize'); tog('#t-peel','peel');
@@ -81,6 +77,14 @@ export function initControls(h){
   $('#glossary-btn').addEventListener('click',()=>gloss.classList.remove('hidden'));
   $('#glossary-close').addEventListener('click',()=>gloss.classList.add('hidden'));
   gloss.addEventListener('click',e=>{if(e.target===gloss)gloss.classList.add('hidden');});
+
+  // presets modal
+  const presetsModal=$('#presets');
+  if(presetsModal){
+    $('#presets-btn').addEventListener('click',()=>presetsModal.classList.remove('hidden'));
+    $('#presets-close').addEventListener('click',()=>presetsModal.classList.add('hidden'));
+    presetsModal.addEventListener('click',e=>{if(e.target===presetsModal)presetsModal.classList.add('hidden');});
+  }
   $('#glossary-body').innerHTML=Object.entries(TYPE_INFO).map(([k,t])=>{
     const c='#'+((CATEGORY[k]&&CATEGORY[k].color||0x888888)).toString(16).padStart(6,'0');
     return `<div class="gloss-item"><span class="gloss-dot" style="background:${c};color:${c}"></span>`+

@@ -10,8 +10,8 @@ depth — from the crust to the inner core.
 | 660 km — cold slabs ring the Pacific | core–mantle boundary — the African LLSVP |
 |---|---|
 | ![slabs](media/slabs-660.png) | ![llsvp](media/llsvp-cmb.png) |
-| inner core — where the scan goes blind, the model fills in | the theoretical model alone — a blurry estimate |
-| ![inner core](media/inner-core.png) | ![model](media/model-only.png) |
+| the measured data as a filled 3-D volume | the theoretical model alone — a blurry estimate |
+| ![3-D data volume](media/model-volume.png) | ![model](media/model-only.png) |
 
 Two layers are composited in 3-D, sharing one camera:
 

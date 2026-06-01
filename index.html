@@ -42,6 +42,7 @@
         <button id="guide-btn" class="btn">ⓘ Guide</button>
         <button id="glossary-btn" class="btn">▦ Glossary</button>
         <button id="data-btn" class="btn">✦ Data</button>
+        <button id="presets-btn" class="btn">★ Presets</button>
       </div>
       <a class="gh-link" href="https://github.com/bowd/terrascan" target="_blank" rel="noopener noreferrer">★ Open source on GitHub ↗</a>
     </section>
@@ -66,8 +67,9 @@
     <section class="card">
       <div class="card-top"><span class="card-title">Layers &amp; display</span></div>
       <div class="toggles">
-        <label class="toggle"><input type="checkbox" id="t-struct" checked /><span>3D bodies</span></label>
+        <label class="toggle"><input type="checkbox" id="t-bodies" checked /><span>Data bodies</span></label>
         <label class="toggle"><input type="checkbox" id="t-scan" checked /><span>Depth slice</span></label>
+        <label class="toggle"><input type="checkbox" id="t-struct" checked /><span>Extracted features</span></label>
         <label class="toggle"><input type="checkbox" id="t-infer" checked /><span>Theory gaps</span></label>
         <label class="toggle"><input type="checkbox" id="t-theory" checked /><span>Model</span></label>
         <label class="toggle"><input type="checkbox" id="t-relief" checked /><span>Surface</span></label>
@@ -95,7 +97,7 @@
         <div class="dial-grp">model · subsurface</div>
         <div class="ctl"><span>model intensity</span><input class="slider dial" data-dial="modelGain" type="range" min="0" max="100" value="50" /></div>
         <div class="ctl"><span>model haze</span><input class="slider dial" data-dial="modelHaze" type="range" min="0" max="100" value="62" /></div>
-        <div class="dial-grp">3-D bodies (synthesis)</div>
+        <div class="dial-grp">extracted features</div>
         <div class="ctl"><span>body opacity</span><input class="slider dial" data-dial="bodyOpacity" type="range" min="0" max="100" value="75" /></div>
         <div class="ctl"><span>body glow</span><input class="slider dial" data-dial="bodyGlow" type="range" min="0" max="100" value="44" /></div>
         <div class="ctl"><span>body size</span><input class="slider dial" data-dial="bodySize" type="range" min="0" max="100" value="29" /></div>
@@ -105,17 +107,6 @@
       <p class="rail-foot">Radial values: real PREM. Lateral features: a faithful synthesis of published tomography. <button id="guide-link" class="linkish">full explainer →</button></p>
     </section>
 
-    <section class="card" id="preset-card">
-      <div class="card-top"><span class="card-title">Presets</span>
-        <span class="info" tabindex="0" data-tip="Save the whole current configuration — depth, every layer toggle, colour/source, all dials, the data pipeline &amp; enabled models — under a name. Click a name to restore it. ★ marks the default that auto-applies when the page loads.">ⓘ</span>
-      </div>
-      <ul id="preset-list" class="preset-list"><li class="preset-empty">no presets yet — save the current view below</li></ul>
-      <div class="preset-save">
-        <input id="preset-name" class="preset-input" type="text" placeholder="name this view…" maxlength="40" />
-        <button id="preset-save" class="btn">Save preset</button>
-      </div>
-      <button id="preset-share" class="btn preset-share">⧉ Copy share link</button>
-    </section>
   </div>
 
   <!-- ===== RIGHT column of floating panes ===== -->
@@ -128,11 +119,7 @@
         <button data-mode="dvs" class="active">speed anomaly</button>
         <button data-mode="feature">feature type</button>
       </div>
-      <div class="segmented" id="datasrc">
-        <button data-src="synth" class="active">synthesis</button>
-        <button data-src="real">real · 3 models</button>
-      </div>
-      <div id="scan-source-note" class="src-note">A hand-built, geographically-faithful synthesis of published features.</div>
+      <div id="scan-source-note" class="src-note">14 real tomography models, combined live.</div>
       <div id="legend-dvs" class="legend">
         <div class="legend-lead">Colour = how fast seismic waves travel = the rock's <b>temperature &amp; stiffness</b>. Motion (sinking / rising) is <em>inferred</em> from that — it is not a direct movement reading.</div>
         <div class="legend-bar dvs-bar"></div>
@@ -154,30 +141,6 @@
           <li><i class="sw" style="background:#33ffa6"></i>ridge / rift (hot)</li>
         </ul>
         <p class="legend-foot">Same data, coloured by what the feature <em>is</em> rather than its speed.</p>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="card-top"><span class="card-title">Data pipeline</span>
-        <span class="info" tabindex="0" data-tip="Choose which published tomography models feed the scan, how they're combined (normalise / cluster / agreement), and how the result is drawn. Shear (S) and P-wave (P) models measure different waves through the same Earth.">ⓘ</span>
-      </div>
-      <div class="sub">Model inputs</div>
-      <div class="model-groups">
-        <label class="toggle model-all"><input type="checkbox" id="t-all-s" checked /><span>all S</span></label>
-        <label class="toggle model-all"><input type="checkbox" id="t-all-p" checked /><span>all P</span></label>
-      </div>
-      <div id="model-list" class="model-list"></div>
-      <label class="toggle normalize-toggle"><input type="checkbox" id="t-normalize" checked /><span>normalize models</span></label>
-      <div class="dial-grp">clustering</div>
-      <div class="ctl"><span>threshold</span><input class="slider dial clus" data-clus="threshold" type="range" min="0" max="100" value="50" /><span class="clus-val" id="clus-threshold">0.50</span></div>
-      <div class="ctl"><span>smooth</span><input class="slider dial clus" data-clus="smooth" type="range" min="0" max="100" value="30" /><span class="clus-val" id="clus-smooth">0.30</span></div>
-      <div class="ctl"><span>agreement min</span><input class="slider dial clus" data-clus="agreeMin" type="range" min="0" max="100" value="40" /><span class="clus-val" id="clus-agreeMin">0.40</span></div>
-      <div class="dial-grp">visualization</div>
-      <div class="segmented" id="vizmode">
-        <button data-viz="surfaces" class="active">Surfaces</button>
-        <button data-viz="volume">Volume</button>
-        <button data-viz="points">Points</button>
-        <button data-viz="wire">Wire</button>
       </div>
     </section>
 
@@ -208,6 +171,30 @@
       <div class="sub know-sub">What we know here</div>
       <div id="know" class="know">—</div>
     </section>
+
+    <section class="card">
+      <div class="card-top"><span class="card-title">Data pipeline</span>
+        <span class="info" tabindex="0" data-tip="Choose which published tomography models feed the scan, how they're combined (normalise / cluster / agreement), and how the result is drawn. Shear (S) and P-wave (P) models measure different waves through the same Earth.">ⓘ</span>
+      </div>
+      <div class="sub">Model inputs</div>
+      <div class="model-groups">
+        <label class="toggle model-all"><input type="checkbox" id="t-all-s" checked /><span>all S</span></label>
+        <label class="toggle model-all"><input type="checkbox" id="t-all-p" checked /><span>all P</span></label>
+      </div>
+      <div id="model-list" class="model-list"></div>
+      <label class="toggle normalize-toggle"><input type="checkbox" id="t-normalize" checked /><span>normalize models</span></label>
+      <div class="dial-grp">clustering</div>
+      <div class="ctl"><span>threshold</span><input class="slider dial clus" data-clus="threshold" type="range" min="0" max="100" value="50" /><span class="clus-val" id="clus-threshold">0.50</span></div>
+      <div class="ctl"><span>smooth</span><input class="slider dial clus" data-clus="smooth" type="range" min="0" max="100" value="30" /><span class="clus-val" id="clus-smooth">0.30</span></div>
+      <div class="ctl"><span>agreement min</span><input class="slider dial clus" data-clus="agreeMin" type="range" min="0" max="100" value="40" /><span class="clus-val" id="clus-agreeMin">0.40</span></div>
+      <div class="dial-grp">visualization</div>
+      <div class="segmented" id="vizmode">
+        <button data-viz="surfaces" class="active">Surfaces</button>
+        <button data-viz="volume">Volume</button>
+        <button data-viz="points">Points</button>
+        <button data-viz="wire">Wire</button>
+      </div>
+    </section>
   </div>
 
   <!-- ===== Guided intro / explainer ===== -->
@@ -230,6 +217,11 @@
           <p>Behind the scan glows the textbook Earth: the smooth, layered reference model (PREM). It's deliberately out of focus — a prediction, not an observation.</p>
           <p>Where the scan has no coverage (especially the deep core), the blurry model brightens and <b>takes over</b>. That hand-off is the whole idea.</p>
         </div>
+      </div>
+      <div class="g-card bodies-explain">
+        <h4>③ THE 3-D BODIES — how they're derived</h4>
+        <p><b>Data bodies</b> come straight from the measurements: the 14 tomography models are averaged on a (lon, lat, depth) grid, lightly smoothed, kept only where the models <em>agree</em>, then meshed into 3-D form (surfaces / volume / points / wire) at a chosen anomaly threshold — blue = fast/cold, red = slow/hot. Tune all of this in the Data-pipeline panel.</p>
+        <p><b>Extracted features</b> are an interpretation, <em>not</em> derived from those models: hand-curated named structures (slabs, LLSVPs, plumes, cratons, ridges) placed at their <em>published</em> locations from the literature. So a plume won't sit exactly on the data's red blob — they're two different things. The <b>survey-link</b> dial fades each feature toward how strongly the measured ensemble actually supports it there.</p>
       </div>
       <p class="guide-cta-row">
         <button id="guide-tour" class="btn primary big">▶ Take the 60-second tour</button>
@@ -258,6 +250,22 @@
       <h2>What are these features?</h2>
       <p>A quick taxonomy of what lives inside the Earth. <b style="color:#7fb0ff">Blue = fast = cold/stiff</b>; <b style="color:#ff7a6a">red = slow = hot/soft</b>. "Motion" is inferred from temperature, not measured.</p>
       <div id="glossary-body" class="gloss-body"></div>
+    </div>
+  </div>
+
+  <!-- ===== Presets ===== -->
+  <div id="presets" class="modal-wrap hidden">
+    <div class="modal">
+      <button id="presets-close" class="modal-close">✕</button>
+      <span class="kicker">CONFIGURATIONS</span>
+      <h2>Presets</h2>
+      <p>Save the whole current view — depth, every layer, all dials, the data pipeline &amp; enabled models — under a name. Click one to restore it; ★ sets the default that loads automatically. Or copy a share link to send a view to someone.</p>
+      <ul id="preset-list" class="preset-list"><li class="preset-empty">no presets yet — save the current view below</li></ul>
+      <div class="preset-save">
+        <input id="preset-name" class="preset-input" type="text" placeholder="name this view…" maxlength="40" />
+        <button id="preset-save" class="btn">Save preset</button>
+      </div>
+      <button id="preset-share" class="btn preset-share">⧉ Copy share link</button>
     </div>
   </div>
 
