@@ -38,7 +38,10 @@ controls.enableDamping=true; controls.dampingFactor=0.06;
 controls.minDistance=1.28; controls.maxDistance=7.5;
 controls.autoRotate=true; controls.autoRotateSpeed=0.32;
 controls.rotateSpeed=0.85; controls.zoomSpeed=0.9;
-controls.addEventListener('start', ()=>{ if(state.touring) stopTour(); }); // manual interaction ends the tour
+controls.addEventListener('start', ()=>{        // any manual grab takes over cleanly
+  if(state.touring) stopTour();
+  if(glideCam){ if(glideTarget) controls.target.copy(glideTarget); glideCam=null; glideTarget=null; }
+});
 
 // ---------- scenes ----------
 const theoryScene=new THREE.Scene();
@@ -285,7 +288,7 @@ function exitFocus(){
   if(!state.focused) return;
   structures.focus(null); earthWire.visible=false; ui.focusPanel(null);
   scan.mesh.visible=state.showScan; markerGroup.visible=state.showMarkers; relief.setOpacity(state.reliefOpacity);
-  glideTarget=savedTarget?savedTarget.clone():new THREE.Vector3();
+  glideTarget=new THREE.Vector3(0,0,0);                 // the globe pivot is always the origin
   glideCam=savedCam?savedCam.clone():new THREE.Vector3(0.2,0.9,3.0);
   state.focused=null; controls.autoRotate=state.spin;
 }
