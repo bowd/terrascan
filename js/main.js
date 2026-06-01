@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import {
-  EARTH_RADIUS, premAt, geoLayerAt, depthToUnit, tempUncertainty, reliefCutRadius, ELEV_TOP,
+  EARTH_RADIUS, premAt, geoLayerAt, depthToUnit, tempUncertainty, reliefCutRadius, ELEV_TOP, MAX_DEPTH,
 } from './earthModel.js';
 import { makeScanField, activeFeatures, dominantFeatures, TYPE_INFO } from './tomography.js';
 import { loadGeo, rasterizeLand, buildCoastlines, buildGraticule, latLonToVec3 } from './geo.js';
@@ -313,7 +313,7 @@ const handlers={
 let pendingDepth=0, builtDepth=-999, lastBuild=0, lastReadout={};
 function setDepth(d){
   const floor = state.reliefPeel ? -ELEV_TOP : 0;          // peel lets the cut rise above sea level
-  d=Math.max(floor,Math.min(EARTH_RADIUS,d));
+  d=Math.max(floor,Math.min(MAX_DEPTH,d));      // scroll stops at the core-mantle boundary
   state.depth=d; pendingDepth=d;
   const dd=Math.max(0,d);                                  // physical sampling never goes above sea level
   scan.setRadius(depthToUnit(dd));
@@ -427,7 +427,7 @@ async function loadEnsemble(){
 
 // ---------- dive ----------
 let diveTarget=null;
-function startDive(){ stopTour(); state.diving=true; diveVel=DIVE_V0; ui.dive(true); if(state.depth>=EARTH_RADIUS-5) setDepth(0); }
+function startDive(){ stopTour(); state.diving=true; diveVel=DIVE_V0; ui.dive(true); if(state.depth>=MAX_DEPTH-5) setDepth(0); }
 function stopDive(){ if(state.diving){ state.diving=false; ui.dive(false);} diveVel=0; diveTarget=null; }
 function animateTo(d){ diveTarget=d; }
 
@@ -552,7 +552,7 @@ function animate(){
   if(state.diving){
     diveVel = Math.min(DIVE_VMAX, diveVel + DIVE_ACCEL*dt);   // slow start, accelerating descent
     let d=state.depth + diveVel*dt;
-    if(d>=EARTH_RADIUS){ d=EARTH_RADIUS; stopDive(); }
+    if(d>=MAX_DEPTH){ d=MAX_DEPTH; stopDive(); }
     setDepth(d);
   } else if(diveTarget!==null){
     const d=state.depth + (diveTarget-state.depth)*Math.min(1, dt*4.5);

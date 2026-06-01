@@ -126,8 +126,11 @@ export const unitToDepth  = (u)=> EARTH_RADIUS*(1-u);
 // ---- non-linear depth axis: t in [0,1] -> depth, expanding the shallow zone ----
 // so the crust/lithosphere/asthenosphere get a usable share of the slider.
 const DEXP = 2.2;
-export const sliderToDepth = (t)=> EARTH_RADIUS*Math.pow(Math.max(0,Math.min(1,t)), DEXP);
-export const depthToSlider = (d)=> Math.pow(Math.max(0,Math.min(1,d/EARTH_RADIUS)), 1/DEXP);
+// the scroll stops at the core-mantle boundary — the mantle (and all the tomographic
+// data) ends here; below is the structureless liquid outer core.
+export const MAX_DEPTH = 2891;   // core-mantle boundary (km)
+export const sliderToDepth = (t)=> MAX_DEPTH*Math.pow(Math.max(0,Math.min(1,t)), DEXP);
+export const depthToSlider = (d)=> Math.pow(Math.max(0,Math.min(1,d/MAX_DEPTH)), 1/DEXP);
 
 // ---- relief / elevation axis (peel mode) ----
 // Topography is exaggerated so it reads as real 3-D structure; the cut radius lives

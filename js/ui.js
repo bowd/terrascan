@@ -9,7 +9,7 @@ const ANOM = {fast:'#6f9bff', slow:'#ff6b5a'};
 // curated jump points shown as chips under the depth bar
 const JUMPS = [
   {d:0,label:'surface'}, {d:150,label:'150'}, {d:410,label:'410'}, {d:660,label:'660'},
-  {d:1500,label:'1500'}, {d:2741,label:'D″'}, {d:2891,label:'CMB'}, {d:5150,label:'ICB'}, {d:6371,label:'centre'},
+  {d:1500,label:'1500'}, {d:2741,label:'D″'}, {d:2891,label:'CMB · floor'},
 ];
 
 export function initControls(h){
