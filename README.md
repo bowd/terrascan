@@ -76,9 +76,12 @@ so it works under a project subpath (`user.github.io/repo/`):
    `main` / `/ (root)`.
 3. Open the published URL. (`.nojekyll` is included so all files are served verbatim.)
 
-## Deployed internally
+## Deployed
 
-Live on the home cluster at **https://terrascan.solace.internal/** — nginx on
+Public: **https://terrascan.bowd.io/** — served as a static site from GitHub Pages
+(no build step; three.js is vendored, everything loads over relative paths).
+
+Also runs on a home k3s cluster at **https://terrascan.solace.internal/** — nginx on
 k3s behind Traefik, in its own `terrascan` namespace. Build artifacts are in
 `deploy/` (`Dockerfile`, `nginx.conf`, `k8s/` manifests). This k3s runs
 cri-dockerd, so a locally-built docker image is visible to the cluster directly
