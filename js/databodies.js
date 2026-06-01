@@ -1,15 +1,24 @@
-// databodies.js — STRUCTURAL representation of the REAL data, now REBUILDABLE.
+// databodies.js — STRUCTURAL representation of the REAL data, now REBUILDABLE
+// and OFF the main thread.
 //
 // The ensemble is a continuous volume. We turn it into coherent 3-D structures via
 // a small clustering pipeline (signed-field blur + agreement gate + iso-threshold)
-// and then project it with one of three swappable STRATEGIES:
+// and then project it with one of several swappable STRATEGIES:
 //   • 'surfaces' (default) — two translucent isosurfaces (fast/cold→blue slabs,
 //                            slow/hot→red piles) meshed with table-free Surface Nets.
 //   • 'points'             — an instanced blob cloud, one icosahedron per body cell.
 //   • 'wire'               — the isosurfaces drawn as a faint wireframe skeleton.
+//   • 'volume'             — radially-stretched blobs that fill the body solid.
 //
 // All strategies share a depth-band lit uniform (the band sweeps as you slide) and a
 // radial CUTAWAY clip that discards everything shallower than the current depth.
+//
+// PERFORMANCE: the heavy numeric work (cluster blur + Surface Nets / instance-matrix
+// build) lives in the pure-numeric `bodies-kernels.js` and runs in a Web Worker
+// (`bodies-worker.js`) with transferable TypedArrays — so a model toggle or a cluster
+// slider no longer freezes orbit/UI. This module only assembles THREE objects from the
+// arrays the worker returns. If Workers are unavailable, the SAME kernels run
+// synchronously on the main thread (fallback) so the app never breaks.
 //
 //   makeDataBodies(field, params) -> bodies
 //     field  = { nlon, nlat, ndep, depths:[km...], dvs:Float32Array, agree:Float32Array }
@@ -19,41 +28,9 @@
 //   bodies.group / rebuild(field,params) / setStrategy / setCutaway / setCurDepth /
 //   setBand / setOpacity
 import * as THREE from 'three';
-import { EARTH_RADIUS, depthToUnit } from './earthModel.js';
-import { latLonToVec3 } from './geo.js';
+import * as kernels from './bodies-kernels.js';
 
 const DEFAULTS = { threshold:0.55, smooth:1, agreeMin:0.4, strategy:'surfaces', opacity:1, band:0.016 };
-
-// ---- naive Surface Nets (table-free) -----------------------------------------
-const CORNER=[[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]];
-const EDGE=[[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]];
-
-function surfaceNets(NX,NY,NZ, field, toWorld){
-  const cellVert=new Int32Array(NX*NY*NZ).fill(-1);
-  const idx=(x,y,z)=>(z*NY+y)*NX+x;
-  const pos=[], dep=[], g=new Float64Array(8);
-  for(let z=0;z<NZ-1;z++)for(let y=0;y<NY-1;y++)for(let x=0;x<NX-1;x++){
-    let mask=0;
-    for(let c=0;c<8;c++){ const o=CORNER[c]; const v=field(x+o[0],y+o[1],z+o[2]); g[c]=v; if(v<0) mask|=(1<<c); }
-    if(mask===0||mask===255) continue;
-    let sx=0,sy=0,sz=0,cnt=0;
-    for(let e=0;e<12;e++){ const a=EDGE[e][0],b=EDGE[e][1],ga=g[a],gb=g[b];
-      if((ga<0)===(gb<0)) continue;
-      const t=ga/(ga-gb), ca=CORNER[a], cb=CORNER[b];
-      sx+=ca[0]+(cb[0]-ca[0])*t; sy+=ca[1]+(cb[1]-ca[1])*t; sz+=ca[2]+(cb[2]-ca[2])*t; cnt++; }
-    const w=toWorld(x+sx/cnt, y+sy/cnt, z+sz/cnt);
-    cellVert[idx(x,y,z)]=pos.length/3; pos.push(w.x,w.y,w.z); dep.push(w.d);
-  }
-  const indices=[];
-  const quad=(a,b,c,d)=>{ if(a<0||b<0||c<0||d<0) return; indices.push(a,b,d, b,c,d); };
-  for(let z=1;z<NZ-1;z++)for(let y=1;y<NY-1;y++)for(let x=1;x<NX-1;x++){
-    const v0=field(x,y,z)<0;
-    if(v0!==(field(x+1,y,z)<0)) quad(cellVert[idx(x,y,z)],cellVert[idx(x,y-1,z)],cellVert[idx(x,y-1,z-1)],cellVert[idx(x,y,z-1)]);
-    if(v0!==(field(x,y+1,z)<0)) quad(cellVert[idx(x,y,z)],cellVert[idx(x,y,z-1)],cellVert[idx(x-1,y,z-1)],cellVert[idx(x-1,y,z)]);
-    if(v0!==(field(x,y,z+1)<0)) quad(cellVert[idx(x,y,z)],cellVert[idx(x-1,y,z)],cellVert[idx(x-1,y-1,z)],cellVert[idx(x,y-1,z)]);
-  }
-  return {pos,dep,indices};
-}
 
 // ---- shared shader chunks: depth-band lighting + radial cutaway ----------------
 // Every strategy threads a per-vertex/instance aDepth (= depthKm/EARTH_RADIUS) to
@@ -196,6 +173,35 @@ function tagMesh(m, order){ m.frustumCulled=false; m.renderOrder=order; return m
 const FAST_COLOR=[0.42,0.62,1.0];  // cold/fast → blue (slabs)
 const SLOW_COLOR=[1.0,0.40,0.32];  // hot/slow  → red  (LLSVPs/plumes)
 
+// ---- assemble THREE objects from the worker's raw typed arrays -------------------
+// One isosurface mesh from {pos,dep,idx}. Returns {mesh,tris} or null when empty.
+function isoMesh(pos, dep, idx, material, order){
+  if(!idx || !idx.length) return null;
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('aDepth',   new THREE.Float32BufferAttribute(dep,1));
+  // BufferGeometry.setIndex accepts a typed array directly (chooses Uint16/Uint32 attr).
+  g.setIndex(new THREE.BufferAttribute(idx,1));
+  g.computeVertexNormals();
+  return { mesh:tagMesh(new THREE.Mesh(g, material), order), tris:idx.length/3 };
+}
+
+// One InstancedMesh from a flat 16N matrix array + per-instance aDepth/aMag.
+// baseGeom is created per call (instanced attributes live on the geometry).
+function instMesh(makeGeom, mat, dep, mag, material, order){
+  const n = dep.length;
+  if(!n) return null;
+  const geom = makeGeom();
+  const inst = new THREE.InstancedMesh(geom, material, n);
+  inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  // copy the flat matrices straight into the instanceMatrix buffer (no per-instance Matrix4)
+  inst.instanceMatrix.array.set(mat);
+  inst.instanceMatrix.needsUpdate=true;
+  geom.setAttribute('aDepth', new THREE.InstancedBufferAttribute(dep,1));
+  geom.setAttribute('aMag',   new THREE.InstancedBufferAttribute(mag,1));
+  return { mesh:tagMesh(inst, order), count:n };
+}
+
 export function makeDataBodies(field, params){
   let curField=null, curParams={...DEFAULTS};
   // live render state, re-applied to every freshly built material
@@ -203,183 +209,28 @@ export function makeDataBodies(field, params){
   const group=new THREE.Group();
   let meshes=[];   // current scene meshes (so we can dispose them)
 
-  // ---- clustering pipeline: blur the signed field, then gate by agreement -------
-  // Returns { sm, agreeArr, nlon, nlat, nd, depths } or null on an empty/invalid field.
-  function cluster(f, p){
-    if(!f || !f.dvs || !f.depths || !f.depths.length) return null;
-    const nlon=f.nlon, nlat=f.nlat, nd=(f.ndep!=null?f.ndep:f.depths.length);
-    if(!nlon||!nlat||!nd) return null;
-    const N=nd*nlat*nlon;
-    if(f.dvs.length < N) return null;
-    // agreement may be 0..1 already; tolerate the legacy 0..255 form just in case.
-    const rawAgree=f.agree;
-    const agreeArr=new Float32Array(N);
-    for(let k=0;k<N;k++){ let a=rawAgree?rawAgree[k]:1; if(a>1.0001) a/=255; agreeArr[k]=a; }
-    // signed field in % (already mean %), light 3-D blur, `smooth` iterations
-    const wrapJ=(j)=>(j+nlat)%nlat, wrapI=(i)=>((i%nlon)+nlon)%nlon;
-    let src=new Float32Array(N);
-    for(let k=0;k<N;k++) src[k]=f.dvs[k];
-    const iters=Math.max(0, Math.round(p.smooth||0));
-    for(let it=0; it<iters; it++){
-      const dst=new Float32Array(N);
-      const at=(di,j,i)=>src[(di*nlat+wrapJ(j))*nlon+wrapI(i)];
-      for(let di=0;di<nd;di++)for(let j=0;j<nlat;j++)for(let i=0;i<nlon;i++){
-        let s=at(di,j,i)*0.4, w=0.4;
-        const nb=[[di-1,j,i],[di+1,j,i],[di,j-1,i],[di,j+1,i],[di,j,i-1],[di,j,i+1]];
-        for(const [d,y,x] of nb){ if(d<0||d>=nd) continue; s+=at(d,y,x)*0.1; w+=0.1; }
-        dst[(di*nlat+j)*nlon+i]=s/w;
-      }
-      src=dst;
+  // ---- worker plumbing ----------------------------------------------------------
+  let worker=null, usingWorker=false;
+  let jobId=0;          // incrementing tag; only the latest reply is assembled
+  let latestId=0;       // id of the most recent job we posted (the one we want)
+  let loggedWorker=false, loggedFallback=false;
+  let forceSync=false;  // test hook: force the synchronous fallback path
+
+  function initWorker(){
+    if(typeof Worker==='undefined') return;
+    try{
+      worker=new Worker(new URL('./bodies-worker.js', import.meta.url), {type:'module'});
+      worker.onmessage=(e)=>onWorkerReply(e.data);
+      worker.onerror=(e)=>{ // worker died mid-flight: fall back to sync for everything
+        if(typeof console!=='undefined') console.warn('data bodies: worker error, switching to sync', e.message||e);
+        try{ worker.terminate(); }catch(_){}
+        worker=null; usingWorker=false;
+      };
+      usingWorker=true;
+    }catch(e){
+      if(typeof console!=='undefined') console.warn('data bodies: Worker unavailable, using sync fallback', e&&e.message);
+      worker=null; usingWorker=false;
     }
-    return { sm:src, agreeArr, nlon, nlat, nd, depths:f.depths };
-  }
-
-  // ---- shared world warp + padded coord lookups (built per cluster) -------------
-  function makeWarp(c){
-    const {nlon,nlat,nd,depths}=c;
-    const PLAT=[92]; for(let m=0;m<nlat;m++) PLAT.push(90-(m+0.5)/nlat*180); PLAT.push(-92);
-    const PDEP=[depths[0]-80]; for(let m=0;m<nd;m++) PDEP.push(depths[m]); PDEP.push(depths[nd-1]+80);
-    const interp=(arr,fr)=>{ const i0=Math.max(0,Math.min(arr.length-2,Math.floor(fr))); return arr[i0]+(arr[i0+1]-arr[i0])*(fr-i0); };
-    const NX=nlon+1, NY=nlat+2, NZ=nd+2;
-    const toWorld=(fx,fy,fz)=>{
-      const lon=-180+(fx+0.5)/nlon*360;
-      const lat=Math.max(-89.9,Math.min(89.9,interp(PLAT,fy)));
-      const depth=Math.max(8,Math.min(2950,interp(PDEP,fz)));
-      const pp=latLonToVec3(lat,lon,depthToUnit(depth));
-      return {x:pp.x,y:pp.y,z:pp.z, d:depth/EARTH_RADIUS};
-    };
-    return {NX,NY,NZ,toWorld};
-  }
-
-  // signed iso field for Surface Nets: agreement-gated, threshold-shifted.
-  function fieldFor(c,p,sign){
-    const {sm,agreeArr,nlon,nlat,nd}=c, NX=nlon+1,NY=nlat+2,NZ=nd+2, agreeMin=p.agreeMin;
-    return (x,y,z)=>{
-      if(z===0||z===NZ-1||y===0||y===NY-1) return -1000;
-      const di=z-1, j=y-1, i=x%nlon, k=(di*nlat+j)*nlon+i;
-      if(agreeArr[k] < agreeMin) return -1000;
-      return sign*sm[k] - p.threshold;
-    };
-  }
-
-  // ---- isosurface geometry for one sign ----------------------------------------
-  function isoGeom(c,p,sign){
-    const w=makeWarp(c);
-    const {pos,dep,indices}=surfaceNets(w.NX,w.NY,w.NZ, fieldFor(c,p,sign), w.toWorld);
-    if(!indices.length) return null;
-    const g=new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
-    g.setAttribute('aDepth',   new THREE.Float32BufferAttribute(dep,1));
-    g.setIndex(indices); g.computeVertexNormals();
-    return {geom:g, tris:indices.length/3};
-  }
-
-  // ---- strategy builders: each returns { meshes:[...], count } ------------------
-  function buildSurfaces(c,p){
-    const out=[]; let tris=0;
-    const fast=isoGeom(c,p,+1), slow=isoGeom(c,p,-1);
-    if(fast){ out.push(tagMesh(new THREE.Mesh(fast.geom, surfMaterial(FAST_COLOR)), 4.0)); tris+=fast.tris; }
-    if(slow){ out.push(tagMesh(new THREE.Mesh(slow.geom, surfMaterial(SLOW_COLOR)), 4.1)); tris+=slow.tris; }
-    return {meshes:out, count:tris, label:'isosurfaces', unit:'tris'};
-  }
-
-  function buildWire(c,p){
-    const out=[]; let tris=0;
-    const fast=isoGeom(c,p,+1), slow=isoGeom(c,p,-1);
-    if(fast){ out.push(tagMesh(new THREE.Mesh(fast.geom, wireMaterial(FAST_COLOR)), 4.0)); tris+=fast.tris; }
-    if(slow){ out.push(tagMesh(new THREE.Mesh(slow.geom, wireMaterial(SLOW_COLOR)), 4.1)); tris+=slow.tris; }
-    return {meshes:out, count:tris, label:'wire', unit:'tris'};
-  }
-
-  function buildPoints(c,p){
-    const {sm,agreeArr,nlon,nlat,nd,depths}=c, agreeMin=p.agreeMin, thr=p.threshold;
-    const STEP=2; // subsample lat/lon to keep instance counts sane
-    // collect per-sign instances
-    const collect=(sign)=>{
-      const mats=[], depA=[], magA=[];
-      const dummy=new THREE.Object3D();
-      for(let di=0;di<nd;di++){
-        const depth=depths[di], r=depthToUnit(depth), ad=depth/EARTH_RADIUS;
-        for(let j=0;j<nlat;j+=STEP)for(let i=0;i<nlon;i+=STEP){
-          const k=(di*nlat+j)*nlon+i;
-          const v=sm[k], ag=agreeArr[k];
-          if(ag<agreeMin) continue;
-          if(sign>0 ? v<=thr : v>=-thr) continue;   // |v|>thr with the right sign
-          const lat=90-(j+0.5)/nlat*180, lon=-180+(i+0.5)/nlon*360;
-          const pp=latLonToVec3(lat,lon,r);
-          dummy.position.set(pp.x,pp.y,pp.z); dummy.scale.setScalar(1); dummy.rotation.set(0,0,0);
-          dummy.updateMatrix();
-          mats.push(dummy.matrix.clone());
-          depA.push(ad);
-          magA.push(Math.min(1, Math.abs(v)*ag));   // alpha ∝ |dvs|·agree
-        }
-      }
-      return {mats,depA,magA};
-    };
-    const out=[]; let total=0;
-    const mkInst=(data,color,order)=>{
-      if(!data.mats.length) return;
-      // Each InstancedMesh gets its OWN geometry: instanced attributes (aDepth/aMag)
-      // live on the geometry, so a shared base would clobber the first instance's data.
-      const geom=new THREE.IcosahedronGeometry(0.006, 0);
-      const mat=ptsMaterial(color);
-      const inst=new THREE.InstancedMesh(geom, mat, data.mats.length);
-      inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      for(let n=0;n<data.mats.length;n++) inst.setMatrixAt(n, data.mats[n]);
-      inst.instanceMatrix.needsUpdate=true;
-      const depArr=new Float32Array(data.depA), magArr=new Float32Array(data.magA);
-      geom.setAttribute('aDepth', new THREE.InstancedBufferAttribute(depArr,1));
-      geom.setAttribute('aMag',   new THREE.InstancedBufferAttribute(magArr,1));
-      total+=data.mats.length;
-      out.push(tagMesh(inst, order));
-    };
-    const fast=collect(+1), slow=collect(-1);
-    mkInst(fast, FAST_COLOR, 4.0);
-    mkInst(slow, SLOW_COLOR, 4.1);
-    return {meshes:out, count:total, unit:'points', label:'points'};
-  }
-
-  // ---- 'volume': fill the body with radially-stretched translucent blobs ---------
-  function buildVolume(c,p){
-    const {sm,agreeArr,nlon,nlat,nd,depths}=c, agreeMin=p.agreeMin, thr=p.threshold;
-    const up=new THREE.Vector3(0,1,0), q=new THREE.Quaternion(), dir=new THREE.Vector3(), dummy=new THREE.Object3D();
-    const collect=(sign)=>{
-      const mats=[], depA=[], magA=[];
-      for(let di=0;di<nd;di++){
-        const depth=depths[di], r=depthToUnit(depth), ad=depth/EARTH_RADIUS;
-        // radial half-height bridges to the neighbouring depth layers so columns fill solid
-        const rUp = di<nd-1 ? depthToUnit(depths[di+1]) : r-0.012;
-        const rDn = di>0    ? depthToUnit(depths[di-1]) : r+0.012;
-        const radH = Math.abs(rDn-rUp)*0.62 + 0.006;
-        for(let j=0;j<nlat;j++)for(let i=0;i<nlon;i++){
-          const k=(di*nlat+j)*nlon+i, v=sm[k], ag=agreeArr[k];
-          if(ag<agreeMin) continue;
-          if(sign>0 ? v<=thr : v>=-thr) continue;
-          const lat=90-(j+0.5)/nlat*180, lon=-180+(i+0.5)/nlon*360;
-          const pp=latLonToVec3(lat,lon,r); dir.copy(pp).normalize();
-          q.setFromUnitVectors(up, dir);                 // stand the blob up along the radius
-          const latS=0.030 + 0.014*r;                    // wider lateral fill toward the surface
-          dummy.position.copy(pp); dummy.quaternion.copy(q); dummy.scale.set(latS, radH, latS); dummy.updateMatrix();
-          mats.push(dummy.matrix.clone()); depA.push(ad); magA.push(Math.min(1, Math.abs(v)*ag));
-        }
-      }
-      return {mats,depA,magA};
-    };
-    const out=[]; let total=0;
-    const mkInst=(data,color,order)=>{
-      if(!data.mats.length) return;
-      const geom=new THREE.IcosahedronGeometry(1,0);     // unit blob; instanceMatrix scales it
-      const inst=new THREE.InstancedMesh(geom, volMaterial(color), data.mats.length);
-      inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      for(let n=0;n<data.mats.length;n++) inst.setMatrixAt(n, data.mats[n]);
-      inst.instanceMatrix.needsUpdate=true;
-      geom.setAttribute('aDepth', new THREE.InstancedBufferAttribute(new Float32Array(data.depA),1));
-      geom.setAttribute('aMag',   new THREE.InstancedBufferAttribute(new Float32Array(data.magA),1));
-      total+=data.mats.length; out.push(tagMesh(inst, order));
-    };
-    mkInst(collect(+1), FAST_COLOR, 4.0);
-    mkInst(collect(-1), SLOW_COLOR, 4.1);
-    return {meshes:out, count:total, unit:'blobs', label:'volume'};
   }
 
   // ---- apply current render state to a freshly built material -------------------
@@ -402,18 +253,92 @@ export function makeDataBodies(field, params){
     meshes=[];
   }
 
-  const BUILDERS={ surfaces:buildSurfaces, points:buildPoints, wire:buildWire, volume:buildVolume };
-
-  function build(){
+  // ---- assemble the new meshes from a kernel result, swap them in ---------------
+  function assemble(res){
     disposeMeshes();
-    const c=cluster(curField, curParams);
-    const strat=BUILDERS[curParams.strategy] ? curParams.strategy : 'surfaces';
-    let res={meshes:[], count:0, unit:'tris', label:strat};
-    if(c){ res=BUILDERS[strat](c, curParams); }
-    meshes=res.meshes;
+    const out=[]; let count=0, unit='tris', label=res.strategy;
+    if(res.ok){
+      if(res.strategy==='surfaces' || res.strategy==='wire'){
+        const matF = res.strategy==='wire' ? wireMaterial : surfMaterial;
+        const fast=isoMesh(res.posFast, res.depFast, res.idxFast, matF(FAST_COLOR), 4.0);
+        const slow=isoMesh(res.posSlow, res.depSlow, res.idxSlow, matF(SLOW_COLOR), 4.1);
+        if(fast){ out.push(fast.mesh); count+=fast.tris; }
+        if(slow){ out.push(slow.mesh); count+=slow.tris; }
+        unit='tris'; label = res.strategy==='wire' ? 'wire' : 'isosurfaces';
+      } else if(res.strategy==='points'){
+        const mk=()=>new THREE.IcosahedronGeometry(0.006, 0);
+        const fast=instMesh(mk, res.matFast, res.depFast, res.magFast, ptsMaterial(FAST_COLOR), 4.0);
+        const slow=instMesh(mk, res.matSlow, res.depSlow, res.magSlow, ptsMaterial(SLOW_COLOR), 4.1);
+        if(fast){ out.push(fast.mesh); count+=fast.count; }
+        if(slow){ out.push(slow.mesh); count+=slow.count; }
+        unit='points'; label='points';
+      } else if(res.strategy==='volume'){
+        const mk=()=>new THREE.IcosahedronGeometry(1, 0);
+        const fast=instMesh(mk, res.matFast, res.depFast, res.magFast, volMaterial(FAST_COLOR), 4.0);
+        const slow=instMesh(mk, res.matSlow, res.depSlow, res.magSlow, volMaterial(SLOW_COLOR), 4.1);
+        if(fast){ out.push(fast.mesh); count+=fast.count; }
+        if(slow){ out.push(slow.mesh); count+=slow.count; }
+        unit='blobs'; label='volume';
+      }
+    }
+    meshes=out;
     for(const m of meshes){ applyState(m); group.add(m); }
     if(typeof console!=='undefined')
-      console.log(`data bodies: ${res.label} — ${res.count} ${res.unit} (${meshes.length} mesh${meshes.length===1?'':'es'})`);
+      console.log(`data bodies: ${label} — ${count} ${unit} (${meshes.length} mesh${meshes.length===1?'':'es'})`);
+  }
+
+  // ---- worker reply handler: coalesce by id (drop stale replies) ----------------
+  function onWorkerReply(msg){
+    if(!msg || msg.id==null) return;
+    if(msg.id!==latestId) return;        // a newer rebuild superseded this one — drop it
+    if(msg.error){
+      if(typeof console!=='undefined') console.warn('data bodies: worker job failed, retrying sync', msg.error);
+      runSync();                          // recover on the main thread
+      return;
+    }
+    if(!loggedWorker && typeof console!=='undefined'){ console.log('data bodies: rebuild via worker'); loggedWorker=true; }
+    assemble(msg.result);
+  }
+
+  // ---- build a transferable COPY of the field (dataengine reuses its buffers) ----
+  function snapshotField(){
+    const f=curField;
+    const ndep=(f.ndep!=null?f.ndep:f.depths.length);
+    // copy dvs/agree into fresh typed arrays we own and can transfer away
+    const dvs=Float32Array.from(f.dvs);
+    const agree=f.agree?Float32Array.from(f.agree):null;
+    const depths=Array.isArray(f.depths)?f.depths.slice():Array.from(f.depths);
+    return { field:{ nlon:f.nlon, nlat:f.nlat, ndep, depths, dvs, agree }, dvs, agree };
+  }
+
+  // ---- run the rebuild synchronously on the main thread (fallback / recovery) ----
+  function runSync(){
+    if(!loggedFallback && typeof console!=='undefined'){ console.log('data bodies: rebuild via sync fallback'); loggedFallback=true; }
+    const out=kernels.buildBodies(
+      { nlon:curField.nlon, nlat:curField.nlat, ndep:(curField.ndep!=null?curField.ndep:curField.depths.length),
+        depths:curField.depths, dvs:curField.dvs, agree:curField.agree },
+      curParams, curParams.strategy);
+    assemble(out.result);
+  }
+
+  // ---- kick off a rebuild (worker if available, else sync) ----------------------
+  function build(){
+    if(!curField){ disposeMeshes(); return; }
+    if(usingWorker && worker && !forceSync){
+      latestId=++jobId;
+      const snap=snapshotField();
+      const transfers=[snap.dvs.buffer];
+      if(snap.agree) transfers.push(snap.agree.buffer);
+      try{
+        worker.postMessage({ id:latestId, field:snap.field, params:{...curParams}, strategy:curParams.strategy }, transfers);
+        return;
+      }catch(e){
+        if(typeof console!=='undefined') console.warn('data bodies: postMessage failed, using sync', e&&e.message);
+        worker=null; usingWorker=false;
+        // fall through to sync
+      }
+    }
+    runSync();
   }
 
   // ---- public API ---------------------------------------------------------------
@@ -429,15 +354,21 @@ export function makeDataBodies(field, params){
     if(name && name!==curParams.strategy){ curParams={...curParams, strategy:name}; }
     build();
   }
+  // synchronous setters act on the CURRENT meshes instantly — even while a rebuild is
+  // in flight — so dragging cutaway / depth / band / opacity never waits on the worker.
   function setCutaway(on){ state.clip=on?1:0; for(const m of meshes){ const u=m.material&&m.material.uniforms; if(u&&u.uClip) u.uClip.value=state.clip; } }
   function setCurDepth(frac){ state.curDepth=frac; for(const m of meshes){ const u=m.material&&m.material.uniforms; if(u&&u.uCurDepth) u.uCurDepth.value=frac; } }
   function setBand(frac){ state.band=frac; for(const m of meshes){ const u=m.material&&m.material.uniforms; if(u&&u.uBand) u.uBand.value=frac; } }
   function setOpacity(o){ state.opacity=o; for(const m of meshes){ const u=m.material&&m.material.uniforms; if(u&&u.uOpacity) u.uOpacity.value=o; } }
 
-  // initial build
+  // test hook (not part of the public contract): force the synchronous path.
+  function _setForceSync(on){ forceSync=!!on; }
+
+  // ---- boot ----------------------------------------------------------------------
+  initWorker();
   curParams={...DEFAULTS, ...(params||{})};
   state.band=curParams.band; state.opacity=curParams.opacity;
   rebuild(field, null);
 
-  return { group, rebuild, setStrategy, setCutaway, setCurDepth, setBand, setOpacity };
+  return { group, rebuild, setStrategy, setCutaway, setCurDepth, setBand, setOpacity, _setForceSync };
 }

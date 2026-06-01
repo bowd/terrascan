@@ -399,7 +399,8 @@ async function loadEnsemble(){
     syncClusterFromUI();                                      // adopt the panel's slider positions
     const c=engine.combined();
     scanField.setEnsemble(toScanEns(c));
-    dataBodies=makeDataBodies(c, clusterParams);              // 3-D structures from the live ensemble
+    dataBodies=makeDataBodies(c, clusterParams);              // 3-D structures from the live ensemble (rebuilt in a Web Worker)
+    window.__dataBodies=dataBodies;                           // debug/verification hook (forceSync, group introspection)
     dataBodies.group.visible=(state.source==='real');
     dataBodies.setCurDepth(state.depth/EARTH_RADIUS);
     dataBodies.setCutaway(state.cutaway);
