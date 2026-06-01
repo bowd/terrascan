@@ -1,0 +1,22 @@
+import { chromium } from 'playwright';
+const b=await chromium.launch({headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist']});
+const ctx=await b.newContext({viewport:{width:1300,height:800},permissions:['clipboard-read','clipboard-write']});
+const p=await ctx.newPage();
+await p.goto('http://127.0.0.1:8123/',{waitUntil:'load',timeout:30000});
+await p.waitForTimeout(5000);
+await p.evaluate(()=>document.querySelector('#guide-explore')?.click());
+await p.evaluate(()=>{const c=document.querySelector('#t-borders'); c.checked=true; c.dispatchEvent(new Event('change',{bubbles:true}));});
+await p.waitForTimeout(300);
+await p.evaluate(()=>document.querySelector('#preset-share')?.click());
+await p.waitForTimeout(400);
+const url=await p.evaluate(()=>navigator.clipboard.readText().catch(()=>''));
+await p.close();   // free the server before the share load
+const logs=[];
+const p2=await ctx.newPage();
+p2.on('console',m=>{const t=m.text(); if(/INIT|SHARE|APPLY|fail|models load/i.test(t)) logs.push(t.slice(0,120));});
+await p2.goto(url,{waitUntil:'load',timeout:30000});
+await p2.waitForTimeout(11000);
+const cb=await p2.evaluate(()=>document.querySelector('#t-borders').checked);
+console.log('RESULT borders_cb='+cb);
+console.log(logs.join('\n')||'(none)');
+await b.close();

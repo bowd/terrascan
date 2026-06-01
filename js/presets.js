@@ -3,6 +3,24 @@
 // JSON blob. Deliberately defensive: a malformed/old blob never throws, it just resets.
 const KEY = 'terrascan_presets';
 
+// A baked-in default preset (URL-safe base64 of a settings object). When the user has
+// no default of their own, this is applied on load. Paste a "Copy share link" payload
+// (the part after ?p=) here to set the public default. Empty = no baked default.
+const BUILTIN_DEFAULT = '';
+
+// ---- share encoding: a settings object <-> compact URL-safe base64 -------------
+export function encodeSettings(obj){
+  try { return btoa(unescape(encodeURIComponent(JSON.stringify(obj))))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+  catch(e){ return ''; }
+}
+export function decodeSettings(str){
+  try { let s=String(str).replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4) s+='=';
+    const o=JSON.parse(decodeURIComponent(escape(atob(s))));
+    return (o && typeof o==='object') ? o : null; }
+  catch(e){ return null; }
+}
+
 // shape on disk: { presets:[{id,name,settings}], defaultId, seq }
 // `seq` is a monotonically-increasing integer counter so ids never collide (no Date.now/random).
 function emptyBlob() { return { presets: [], defaultId: null, seq: 0 }; }
@@ -73,12 +91,19 @@ export function makePresets({ capture, apply }) {
 
   function applyDefault() {
     const b = readBlob();
-    if (b.defaultId == null) return false;
-    const p = b.presets.find(x => x.id === b.defaultId);
-    if (!p) return false;
-    try { apply(p.settings); } catch (e) { return false; }
-    return true;
+    if (b.defaultId != null) {
+      const p = b.presets.find(x => x.id === b.defaultId);
+      if (p) { try { apply(p.settings); return true; } catch (e) {} }
+    }
+    // fall back to the baked-in public default
+    if (BUILTIN_DEFAULT) { const s = decodeSettings(BUILTIN_DEFAULT); if (s) { try { apply(s); return true; } catch (e) {} } }
+    return false;
   }
 
-  return { list, save, load, remove, setDefault, getDefaultId, applyDefault };
+  // a shareable URL-safe base64 of the CURRENT settings
+  function shareString() { try { return encodeSettings(capture()); } catch (e) { return ''; } }
+  // apply a settings payload that arrived via a share link / pasted string
+  function applyShareString(str) { const s = decodeSettings(str); if (!s) return false; try { apply(s); } catch (e) { console.warn('applyShareString failed', e); return false; } return true; }
+
+  return { list, save, load, remove, setDefault, getDefaultId, applyDefault, shareString, applyShareString };
 }

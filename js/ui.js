@@ -67,6 +67,8 @@ export function initControls(h){
   const doSave=()=>{ if(!h.onPresetSave) return; h.onPresetSave((presetName&&presetName.value)||''); if(presetName) presetName.value=''; };
   if(presetSave) presetSave.addEventListener('click',doSave);
   if(presetName) presetName.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); doSave(); } });
+  const presetShare=$('#preset-share');
+  if(presetShare) presetShare.addEventListener('click',()=>h.onPresetShare&&h.onPresetShare());
 
   // data sources modal
   const data=$('#data');
@@ -164,6 +166,7 @@ export function initControls(h){
       });
     },
     presetPulse(){ const c=$('#preset-card'); if(!c) return; c.classList.remove('applied'); void c.offsetWidth; c.classList.add('applied'); },
+    presetShared(url){ const b=$('#preset-share'); if(b){ const t=b.textContent; b.textContent= url? '⧉ copy from prompt':'✓ link copied!'; setTimeout(()=>{ b.textContent=t; },1700); } if(url){ try{ window.prompt('Share link (copy):', url); }catch(e){} } },
     tip(f, x, y){
       if(!f){ $('#tip').classList.add('hidden'); return; }
       const ti=TYPE_INFO[f.type]||{};

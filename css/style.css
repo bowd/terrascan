@@ -280,6 +280,7 @@ body.focusing .hud-right{opacity:0;pointer-events:none;transition:opacity .25s}
 .preset-input::placeholder{color:var(--faint)}
 .preset-input:focus{border-color:var(--stroke-bright);background:rgba(120,160,220,.12)}
 .preset-save .btn{flex:0 0 auto}
+.preset-share{width:100%;margin-top:8px}
 
 .rail-foot{font-size:10.5px;line-height:1.5;color:var(--faint);margin:13px 0 0}
 .rail-foot em{font-style:italic;color:var(--dim)}

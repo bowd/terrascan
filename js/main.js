@@ -252,7 +252,11 @@ async function init(){
   // (so model toggles / clustering restore too). Guard everything — never block boot.
   renderPresets();
   try{ await ensembleReady; }catch(e){}
-  try{ presets.applyDefault(); }catch(e){ console.warn('preset default failed', e); }
+  // a shared ?p=<base64> link wins over the default; otherwise apply the (user or baked-in) default
+  try{
+    const shared=new URLSearchParams(location.search).get('p');
+    if(!(shared && presets.applyShareString(shared))) presets.applyDefault();
+  }catch(e){ console.warn('preset apply failed', e); }
   renderPresets();
 }
 
@@ -324,6 +328,12 @@ const handlers={
   onPresetLoad:(id)=>{ if(presets.load(id)){ renderPresets(); ui.presetPulse&&ui.presetPulse(); } },
   onPresetDelete:(id)=>{ presets.remove(id); renderPresets(); },
   onPresetDefault:(id)=>{ presets.setDefault(id); renderPresets(); },
+  onPresetShare:()=>{
+    const s=presets.shareString(); if(!s) return;
+    const url=location.origin+location.pathname+'?p='+s;
+    if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(()=>ui.presetShared&&ui.presetShared()).catch(()=>ui.presetShared&&ui.presetShared(url));
+    else ui.presetShared&&ui.presetShared(url);
+  },
 };
 
 // ---------- depth ----------
