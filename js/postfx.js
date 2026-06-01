@@ -65,6 +65,7 @@ export function makePipeline(renderer){
   let rt=new THREE.WebGLRenderTarget(2,2,opt);
   let rtA=new THREE.WebGLRenderTarget(2,2,opt);
   let rtB=new THREE.WebGLRenderTarget(2,2,opt);
+  rt.texture.colorSpace=rtA.texture.colorSpace=rtB.texture.colorSpace=THREE.LinearSRGBColorSpace;
   let W=2,H=2;
 
   const quad=makeQuad();
@@ -80,9 +81,11 @@ export function makePipeline(renderer){
   const stars=makeStarfield();
 
   function setSize(w,h,pix){
-    W=Math.max(2,Math.floor(w*0.5)); H=Math.max(2,Math.floor(h*0.5));
-    rt.setSize(W,H); rtA.setSize(W,H); rtB.setSize(W,H);
     stars.mat.uniforms.uPix.value=pix||1;
+    const nW=Math.max(2,Math.floor(w*0.5)), nH=Math.max(2,Math.floor(h*0.5));
+    if(nW===W && nH===H) return;
+    W=nW; H=nH;
+    rt.setSize(W,H); rtA.setSize(W,H); rtB.setSize(W,H);
   }
 
   function blur(srcTex, amount){

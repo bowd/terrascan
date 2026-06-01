@@ -115,7 +115,7 @@ export function makeScanField(landMask){
   tex.colorSpace=THREE.NoColorSpace; // holds raw data, not colour
   tex.needsUpdate=true;
   tex.minFilter=THREE.LinearFilter; tex.magFilter=THREE.LinearFilter;
-  tex.wrapS=THREE.RepeatWrapping;
+  tex.wrapS=THREE.RepeatWrapping; tex.wrapT=THREE.ClampToEdgeWrapping;
 
   // static per-texel coverage base (instrumentation + latitude bias + texture)
   const covStatic=new Float32Array(N);

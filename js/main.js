@@ -24,6 +24,8 @@ renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.autoClear=false;
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 container.appendChild(renderer.domElement);
+renderer.domElement.addEventListener('webglcontextlost', (e)=>{ e.preventDefault(); state.contextLost=true; fail('WebGL context lost — please reload the page.'); });
+renderer.domElement.addEventListener('webglcontextrestored', ()=>{ state.contextLost=false; });
 
 const camera=new THREE.PerspectiveCamera(40, container.clientWidth/container.clientHeight, 0.02, 300);
 camera.position.set(0.2, 0.9, 3.0);
@@ -46,14 +48,14 @@ theoryScene.add(theoryShells);
 const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.92, blur:0.62,
   showScan:true, showTheory:true, showCoast:true, showMarkers:true, spin:true,
-  diving:false,
+  diving:false, contextLost:false,
 };
 
 let scanField, scan, markers=[], markerGroup, ui, coastObj, gratObj;
 const DOT_GEO=new THREE.SphereGeometry(0.012, 12, 12);
 
 // ---------- boot ----------
-init();
+init().catch(e=>{ console.error(e); fail('Initialisation failed — see console.'); });
 
 async function init(){
   let coastlines, land;
@@ -151,7 +153,7 @@ function refreshFeaturePanel(){ ui.features(dominantFeatures(state.depth, 7)); }
 function positionMarkers(d){
   const active=activeFeatures(d, 16);
   // hide all
-  for(const m of markers){ m.visible=false; }
+  for(const m of markers){ m.visible=false; m.group.visible=false; }
   const rad=depthToUnit(d);
   for(const a of active){
     let m=markers.find(x=>x.name===a.f.name);
@@ -159,10 +161,9 @@ function positionMarkers(d){
     m.visible=true;
     const p=latLonToVec3(a.f.lat, a.f.lon, rad);
     m.dot.position.copy(p);
-    m.label.position.copy(p.clone().multiplyScalar(1.0+0.045/Math.max(rad,0.2)));
+    m.label.position.copy(p).addScaledVector(p.clone().normalize(), 0.05);
     m.group.visible=true;
   }
-  for(const m of markers){ m.group.visible=m.visible; }
 }
 function spawnMarker(f){
   const color = f.anomaly==='fast' ? '#6f9bff' : '#ff6b5a';
@@ -185,6 +186,7 @@ function animateTo(d){ diveTarget=d; }
 const clock=new THREE.Clock();
 function animate(){
   requestAnimationFrame(animate);
+  if(state.contextLost) return;
   const dt=Math.min(clock.getDelta(),0.05);
   const t=clock.elapsedTime;
 
@@ -200,8 +202,8 @@ function animate(){
 
   // throttled scan rebuild
   const now=performance.now();
-  if(Math.round(pendingDepth)!==builtDepth && now-lastBuild>35){
-    scanField.update(pendingDepth); builtDepth=Math.round(pendingDepth); lastBuild=now;
+  if(Math.abs(pendingDepth-builtDepth)>=1 && now-lastBuild>35){
+    scanField.update(pendingDepth); builtDepth=pendingDepth; lastBuild=now;
     ui.readout({...lastReadout, cov:Math.round(scanField.coverageMean*100)+' %'});
   }
 

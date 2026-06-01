@@ -199,3 +199,8 @@ canvas{display:block}
   .brand-words h1{font-size:17px;letter-spacing:.3em}
   .depth-km{font-size:32px}
 }
+@media (max-height:560px){
+  #panel-left,#panel-right{max-height:calc(100vh - 92px);overflow-y:auto}
+  #legend{padding:8px 14px}
+  .depth-ticks{height:52px}
+}

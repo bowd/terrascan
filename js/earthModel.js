@@ -74,8 +74,8 @@ export const GEO_LAYERS = [
   {name:'Asthenosphere (LVZ)',  d0:80,   d1:220,  state:'solid',  color:0xb5552e, note:'Weak, partially-molten low-velocity zone the plates ride on.'},
   {name:'Upper mantle',         d0:220,  d1:410,  state:'solid',  color:0xbb5a2c, note:'Convecting silicate mantle above the transition zone.'},
   {name:'Transition zone',      d0:410,  d1:660,  state:'solid',  color:0xc4642f, note:'Olivine phase changes at 410 & 660 km — where slabs stall.'},
-  {name:'Lower mantle',         d0:660,  d1:2700, state:'solid',  color:0x9e3b22, note:'Bridgmanite-dominated; hosts sinking slabs & rising piles.'},
-  {name:'D″ layer',             d0:2700, d1:2891, state:'solid',  color:0xff7a3c, note:'Thermal boundary layer at the base of the mantle.'},
+  {name:'Lower mantle',         d0:660,  d1:2741, state:'solid',  color:0x9e3b22, note:'Bridgmanite-dominated; hosts sinking slabs & rising piles.'},
+  {name:'D″ layer',             d0:2741, d1:2891, state:'solid',  color:0xff7a3c, note:'Thermal boundary layer at the base of the mantle.'},
   {name:'Outer core',           d0:2891, d1:5150, state:'liquid', color:0xffb43a, note:'Swirling liquid iron–nickel — the geodynamo. No S-waves.'},
   {name:'Inner core',           d0:5150, d1:6371, state:'solid',  color:0xffeccf, note:'Solid iron sphere, growing as Earth slowly cools.'},
 ];
@@ -97,14 +97,14 @@ export const THEORY_SHELLS = [
 // ---- depth stops shown on the rail ----
 export const DEPTH_STOPS = [
   {d:0,    label:'Surface',              blurb:'The crust — where every map you have ever seen lives.'},
-  {d:100,  label:'Lithosphere base',     blurb:'Plates detach from the convecting mantle below.'},
+  {d:80,   label:'Lithosphere base',     blurb:'Plates detach from the convecting mantle below.'},
   {d:220,  label:'Asthenosphere',        blurb:'The soft low-velocity zone the plates glide over.'},
   {d:410,  label:'410 km discontinuity', blurb:'Olivine → wadsleyite. Top of the transition zone.'},
   {d:660,  label:'660 km discontinuity', blurb:'Ringwoodite breaks down — many slabs pile up here.'},
   {d:1000, label:'Upper lower-mantle',   blurb:'Slabs that punch through 660 keep sinking.'},
   {d:1500, label:'Mid lower-mantle',     blurb:'Cold slab graveyards & the flanks of the hot piles.'},
   {d:2200, label:'Deep lower-mantle',    blurb:'The two great LLSVPs dominate the deep mantle.'},
-  {d:2700, label:'D″ layer',             blurb:'Ultra-low velocity zones hug the core boundary.'},
+  {d:2741, label:'D″ layer',             blurb:'Ultra-low velocity zones hug the core boundary.'},
   {d:2891, label:'Core–mantle boundary', blurb:'Rock meets liquid iron — a 1000 K thermal cliff.'},
   {d:4000, label:'Outer core',           blurb:'Convecting liquid iron generates the magnetic field.'},
   {d:5150, label:'Inner-core boundary',  blurb:'Liquid iron freezes onto the solid inner core.'},
@@ -113,9 +113,9 @@ export const DEPTH_STOPS = [
 ];
 
 export const DISCONTINUITIES = [
-  {name:'Moho',  depth:24.4}, {name:'LAB', depth:100}, {name:'410', depth:410},
-  {name:'660',   depth:660},  {name:'D″',  depth:2700},{name:'CMB', depth:2891},
-  {name:'ICB',   depth:5150},
+  {name:'Moho', depth:24.4}, {name:'LAB', depth:80}, {name:'220', depth:220}, {name:'410', depth:410},
+  {name:'660', depth:660}, {name:'D″', depth:2741}, {name:'CMB', depth:2891},
+  {name:'ICB', depth:5149.5},
 ];
 
 // ---- conversions (scene units: Earth radius = 1) ----
