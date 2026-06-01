@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+data/coastline-110m.json
+data/land-110m.json
+playwright-report/
+test-results/
+.cache/
+*.log
+shots/
