@@ -68,7 +68,7 @@ const VERT=`precision highp float;
     vColor = mix(aColorA, aColorB, uMode);
     float vis = uFocusing<0.5 ? 1.0 : (sel>0.5 ? 1.4 : 0.05);
     vA = aAlpha*vis*(1.0 + hov*0.45);
-    vec3 wp = aOffset + position*aScale*uSize*(2.0+0.4*prox + hov*0.3);   // big, overlapping -> merge
+    vec3 wp = aOffset + position*aScale*uSize*(1.15+0.35*prox + hov*0.3);  // smaller, subtle
     vec4 mv = modelViewMatrix*vec4(wp,1.0);
     vN = normalize(mat3(modelViewMatrix)*normalize(position));            // blobs are unrotated unit spheres
     vView = normalize(-mv.xyz);
@@ -81,9 +81,9 @@ const FRAG=`precision highp float;
   void main(){
     if(uClip>0.5 && vAD < uCurDepth - 0.001) discard;
     float ndv = abs(dot(normalize(vN), normalize(vView)));
-    float link = max(0.35, mix(1.0, vSup, uDataLink));      // survey link, floored so always visible
+    float link = max(0.3, mix(1.0, vSup, uDataLink));       // survey link, floored so always visible
     vec3 col = vColor*(0.72+0.28*ndv)*uGlow;
-    float a = clamp(vA*vHi*uOpacity*link*0.95, 0.0, 0.96);  // SOLID volume via alpha, not additive glow
+    float a = clamp(vA*vHi*uOpacity*link*0.8, 0.0, 0.6);    // subtle translucent volume (capped low)
     gl_FragColor = vec4(col, a);
   }`;
 
@@ -160,9 +160,9 @@ export function makeStructures(){
     const stride=Math.max(2, Math.floor(det.length/12));
     for(let i=0;i<det.length;i++){
       const [lat,lon,depth,scale]=det[i];
-      add(lat,lon,depth,scale,0.9,fi,aCol,bCol);                  // raw detail (solid)
-      if(i%stride===0){                                           // sparse big blob -> fills the volume
-        const p=add(lat,lon,depth,bigR,0.7,fi,aCol,bCol);
+      add(lat,lon,depth,scale,0.55,fi,aCol,bCol);                 // raw detail (subtle)
+      if(i%stride===0){                                           // sparse big blob -> soft fill
+        const p=add(lat,lon,depth,bigR,0.4,fi,aCol,bCol);
         const pr=new THREE.Mesh(proxyGeo,proxyMat); pr.position.copy(p); pr.scale.setScalar(bigR*1.15);
         pr.userData={feature:f}; pr.updateMatrixWorld(); pickProxies.push(pr);
       }
