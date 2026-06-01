@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>TERRASCAN — Looking Inward</title>
+<meta name="description" content="An interactive globe that peers into the Earth's interior: a crisp, classified seismic-scan layer over a blurry theoretical reference model, slice by slice with depth." />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="./css/style.css" />
+<!-- All paths are relative so this deploys cleanly under a GitHub Pages project subpath. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+  <!-- ===== Canvas ===== -->
+  <div id="scene"></div>
+
+  <!-- ===== Loading ===== -->
+  <div id="loading" class="overlay">
+    <div class="loading-core"></div>
+    <div class="loading-text">CALIBRATING TOMOGRAPHY<span class="dots"></span></div>
+    <div id="loading-sub" class="loading-sub">loading reference model · coastlines · scan grid</div>
+  </div>
+
+  <!-- ===== Title ===== -->
+  <header id="masthead">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"></div>
+      <div class="brand-words">
+        <h1>TERRASCAN</h1>
+        <p class="tagline">looking inward · a third map of the Earth</p>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== Left: depth & layers ===== -->
+  <section id="panel-left" class="panel glass">
+    <div class="panel-head">
+      <span class="kicker">DEPTH PROBE</span>
+      <button id="dive-btn" class="ghost-btn" title="Animate a dive to the core">▶ dive</button>
+    </div>
+
+    <div class="depth-readout">
+      <span id="depth-km" class="depth-km">0</span><span class="unit">km</span>
+      <div id="depth-layer" class="depth-layer">Surface · crust</div>
+    </div>
+
+    <input id="depth-slider" class="slider vertical-hint" type="range" min="0" max="6371" value="0" step="1" />
+    <div id="depth-ticks" class="depth-ticks"><!-- stops injected --></div>
+
+    <div class="divider"></div>
+
+    <div class="control-row">
+      <span class="ctl-label">Colour by</span>
+      <div class="segmented" id="colormode">
+        <button data-mode="dvs" class="active">velocity ΔVs</button>
+        <button data-mode="feature">feature class</button>
+      </div>
+    </div>
+
+    <div class="toggles">
+      <label class="toggle"><input type="checkbox" id="t-scan" checked /><span>Scan layer</span></label>
+      <label class="toggle"><input type="checkbox" id="t-theory" checked /><span>Theoretical model</span></label>
+      <label class="toggle"><input type="checkbox" id="t-coast" checked /><span>Coastlines</span></label>
+      <label class="toggle"><input type="checkbox" id="t-markers" checked /><span>Feature tags</span></label>
+      <label class="toggle"><input type="checkbox" id="t-spin" checked /><span>Auto-rotate</span></label>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="control-row slim">
+      <span class="ctl-label">Scan opacity</span>
+      <input id="scan-opacity" class="slider" type="range" min="0" max="100" value="92" />
+    </div>
+    <div class="control-row slim">
+      <span class="ctl-label">Model haze</span>
+      <input id="blur-amount" class="slider" type="range" min="0" max="100" value="62" />
+    </div>
+    <div class="control-row slim">
+      <span class="ctl-label">ΔVs gain</span>
+      <input id="gain" class="slider" type="range" min="40" max="160" value="100" />
+    </div>
+  </section>
+
+  <!-- ===== Right: readouts ===== -->
+  <aside id="panel-right" class="panel glass">
+    <div class="panel-head">
+      <span class="kicker">SLICE READOUT</span>
+      <button id="about-btn" class="ghost-btn">about</button>
+    </div>
+
+    <div class="readout-grid">
+      <div class="ro"><span class="ro-k">Layer</span><span class="ro-v" id="ro-layer">Crust</span></div>
+      <div class="ro"><span class="ro-k">State</span><span class="ro-v" id="ro-state">solid</span></div>
+      <div class="ro"><span class="ro-k">V<sub>p</sub></span><span class="ro-v" id="ro-vp">— km/s</span></div>
+      <div class="ro"><span class="ro-k">V<sub>s</sub></span><span class="ro-v" id="ro-vs">— km/s</span></div>
+      <div class="ro"><span class="ro-k">Density</span><span class="ro-v" id="ro-rho">— g/cm³</span></div>
+      <div class="ro"><span class="ro-k">Pressure</span><span class="ro-v" id="ro-p">— GPa</span></div>
+      <div class="ro"><span class="ro-k">Temp ≈</span><span class="ro-v" id="ro-temp">— K</span></div>
+      <div class="ro"><span class="ro-k">Resolved</span><span class="ro-v" id="ro-cov">— %</span></div>
+    </div>
+
+    <div class="ro-note" id="ro-note">The radial values come from a real reference model; the lateral structure is a stylised synthesis of published scans.</div>
+
+    <div class="divider"></div>
+    <span class="kicker">DOMINANT FEATURES AT THIS DEPTH</span>
+    <ul id="feature-list" class="feature-list"><li class="muted">—</li></ul>
+  </aside>
+
+  <!-- ===== Legend ===== -->
+  <footer id="legend" class="panel glass">
+    <div id="legend-dvs" class="legend-block">
+      <span class="legend-title">SHEAR-VELOCITY ANOMALY ΔVs</span>
+      <div class="legend-bar dvs-bar"></div>
+      <div class="legend-scale"><span>−2.0% slow / hot</span><span>0</span><span>fast / cold +2.0%</span></div>
+      <div class="legend-foot">opacity ∝ how well the region is resolved · faint = sparse coverage, the model shows through</div>
+    </div>
+    <div id="legend-feature" class="legend-block hidden">
+      <span class="legend-title">FEATURE CLASSIFICATION</span>
+      <div class="legend-chips">
+        <span class="chip" data-c="slab">subducted slab</span>
+        <span class="chip" data-c="llsvp">LLSVP (hot pile)</span>
+        <span class="chip" data-c="ulvz">ULVZ</span>
+        <span class="chip" data-c="plume">mantle plume</span>
+        <span class="chip" data-c="craton">cratonic root</span>
+        <span class="chip" data-c="ridge">ridge / rift</span>
+      </div>
+      <div class="legend-foot">opacity ∝ how well the region is resolved · faint = sparse coverage, the model shows through</div>
+    </div>
+  </footer>
+
+  <!-- ===== About modal ===== -->
+  <div id="about" class="modal-wrap hidden">
+    <div class="modal glass">
+      <button id="about-close" class="modal-close">✕</button>
+      <h2>A third map of the Earth</h2>
+      <p>Most globes show the <em>outside</em>: borders, coastlines, terrain. <strong>TERRASCAN</strong> looks <em>inward</em>. As you drive the depth probe from the surface to the inner core, two things are layered on top of each other:</p>
+      <ul>
+        <li><strong class="hl-scan">The scan.</strong> A crisp, classified slice of what seismic tomography actually <em>sees</em> at that depth — fast (cold, sinking) and slow (hot, rising) shear-velocity anomalies. It is not binary “scanned / not scanned”: colour encodes the anomaly and <em>transparency encodes how well the region is resolved</em>. Where coverage is thin, the scan fades and the model behind shows through.</li>
+        <li><strong class="hl-theory">The model.</strong> A soft, blurry shell behind the scan — the smooth, theoretical reference Earth (the radially-symmetric PREM structure). It is deliberately out of focus: an <em>estimation</em>, not an observation.</li>
+      </ul>
+      <h3>An honest note on the data</h3>
+      <p>The <strong>radial profile</strong> (velocities, density, pressure, layer boundaries) is the real <a href="https://ds.iris.edu/spud/earthmodel" target="_blank" rel="noopener">PREM</a> reference model (Dziewonski &amp; Anderson, 1981). The <strong>lateral anomalies</strong> are a hand-built, geographically-faithful <em>synthesis</em> of well-established features from published global models (e.g. S40RTS, SEMUCB-WM1, GyPSuM) — the African &amp; Pacific LLSVPs, subducted slabs, plume conduits, cratonic roots — rather than a pixel-exact re-render of any single dataset. Treat it as an illustrative map of <em>what we know is down there</em>, not a measurement.</p>
+      <h3>Controls</h3>
+      <p class="kbd-row"><span class="kbd">drag</span> orbit · <span class="kbd">scroll</span> zoom · <span class="kbd">depth slider</span> dive · <span class="kbd">tick</span> jump to a boundary · <span class="kbd">▶ dive</span> auto-descend</p>
+      <p class="credits">Coastlines &amp; land: Natural Earth (public domain). Reference model: PREM / IRIS. Built with three.js.</p>
+    </div>
+  </div>
+
+  <!-- ===== Compass / depth rail (bottom-left mini) ===== -->
+  <div id="depth-rail" class="depth-rail" aria-hidden="true"></div>
+
+  <noscript><div class="overlay"><div class="loading-text">This visualisation needs JavaScript &amp; WebGL.</div></div></noscript>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
