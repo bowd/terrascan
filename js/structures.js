@@ -51,12 +51,12 @@ function sampleDetail(f, rnd){
 
 const VERT=`precision highp float;
   uniform mat4 modelViewMatrix, projectionMatrix;
-  uniform float uCurDepth,uFocus,uMode,uSelFeature,uFocusing,uHoverFeature;
+  uniform float uCurDepth,uFocus,uMode,uSelFeature,uFocusing,uHoverFeature,uSize;
   attribute vec3 position, aOffset, aColorA, aColorB;
-  attribute float aScale, aDepth, aAlpha, aFeature;
-  varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL; varying float vAD;
+  attribute float aScale, aDepth, aAlpha, aFeature, aSupport;
+  varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL; varying float vAD; varying float vSup;
   void main(){
-    vAD = aDepth;
+    vAD = aDepth; vSup = aSupport;
     float prox = 1.0 - smoothstep(0.0, uFocus, abs(aDepth-uCurDepth));
     float sel = (uFocusing>0.5 && abs(aFeature-uSelFeature)<0.5) ? 1.0 : 0.0;
     float hov = (abs(aFeature-uHoverFeature)<0.5) ? 1.0 : 0.0;   // body under the cursor
@@ -64,18 +64,19 @@ const VERT=`precision highp float;
     vColor = mix(aColorA, aColorB, uMode);
     float vis = uFocusing<0.5 ? 1.0 : (sel>0.5 ? 1.4 : 0.05);
     vA = aAlpha*vis*(1.0 + hov*0.45); vL = position;
-    // larger, more-overlapping blobs read as a soft continuous mass (less pointillist)
-    vec3 wp = aOffset + position*aScale*(1.32+0.4*prox + hov*0.3);
+    vec3 wp = aOffset + position*aScale*uSize*(1.32+0.4*prox + hov*0.3);   // uSize = global body-size dial
     gl_Position = projectionMatrix*modelViewMatrix*vec4(wp,1.0);
   }`;
 const FRAG=`precision highp float;
-  uniform float uOpacity;
+  uniform float uOpacity, uGlow, uDataLink;
   uniform float uClip, uCurDepth;
-  varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL; varying float vAD;
+  varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL; varying float vAD; varying float vSup;
   void main(){
     if(uClip>0.5 && vAD < uCurDepth - 0.001) discard;
     float edge=0.66+0.34*clamp(vL.z*0.5+0.5,0.0,1.0);   // gentler shade -> softer, less hard-lit
-    gl_FragColor=vec4(vColor*vHi*edge*vA*uOpacity, 1.0);
+    // survey link: fade each blob toward how much the MEASURED ensemble supports it there
+    float link = mix(1.0, vSup, uDataLink);
+    gl_FragColor=vec4(vColor*vHi*edge*vA*uOpacity*uGlow*link, 1.0);
   }`;
 
 // 2D convex hull (monotone chain)
@@ -127,6 +128,7 @@ function buildFootprints(footData){
 export function makeStructures(){
   const rnd=mulberry32(20260601);
   const off=[],scl=[],ca=[],cb=[],dep=[],alp=[],fea=[];
+  const llt=[],lln=[],ldp=[];   // per-blob lat/lon/depth, for sampling the measured field
   const pickProxies=[]; const info=new Map(); const footData=[];
   const proxyGeo=new THREE.SphereGeometry(1,8,6), proxyMat=new THREE.MeshBasicMaterial();
   let fi=0;
@@ -137,6 +139,7 @@ export function makeStructures(){
     off.push(p.x,p.y,p.z); scl.push(scale);
     ca.push(aCol[0],aCol[1],aCol[2]); cb.push(bCol[0],bCol[1],bCol[2]);
     dep.push(1.0-p.length()); alp.push(alpha); fea.push(fidx);
+    llt.push(lat); lln.push(lon); ldp.push(depth);
     return p;
   }
 
@@ -171,11 +174,13 @@ export function makeStructures(){
   g.setAttribute('aDepth',  new THREE.InstancedBufferAttribute(new Float32Array(dep),1));
   g.setAttribute('aAlpha',  new THREE.InstancedBufferAttribute(new Float32Array(alp),1));
   g.setAttribute('aFeature',new THREE.InstancedBufferAttribute(new Float32Array(fea),1));
+  g.setAttribute('aSupport',new THREE.InstancedBufferAttribute(new Float32Array(scl.length).fill(1),1)); // measured support, 1 until sampled
   g.instanceCount=scl.length;
 
   const mat=new THREE.RawShaderMaterial({ transparent:true, depthTest:false, depthWrite:false,
     blending:THREE.AdditiveBlending, vertexShader:VERT, fragmentShader:FRAG,
-    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.03}, uMode:{value:0}, uOpacity:{value:1},
+    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.03}, uMode:{value:0}, uOpacity:{value:0.85},
+      uGlow:{value:0.7}, uSize:{value:0.8}, uDataLink:{value:0},
       uSelFeature:{value:-1}, uFocusing:{value:0}, uHoverFeature:{value:-1}, uClip:{value:0} } });
 
   const mesh=new THREE.Mesh(g,mat); mesh.frustumCulled=false; mesh.renderOrder=4;
@@ -187,6 +192,12 @@ export function makeStructures(){
     setCutaway:(on)=>mat.uniforms.uClip.value = on?1:0,
     setMode:(m)=>mat.uniforms.uMode.value=m,
     setOpacity:(o)=>mat.uniforms.uOpacity.value=o,
+    setGlow:(v)=>mat.uniforms.uGlow.value=v,
+    setSize:(v)=>mat.uniforms.uSize.value=v,
+    setDataLink:(v)=>mat.uniforms.uDataLink.value=v,
+    // sample the measured ensemble at each blob's (lat,lon,depth) -> per-blob "support" 0..1
+    setDataSupport:(fn)=>{ if(!fn) return; const a=g.getAttribute('aSupport');
+      for(let i=0;i<llt.length;i++) a.array[i]=fn(llt[i],lln[i],ldp[i]); a.needsUpdate=true; },
     setFocusBand:(v)=>mat.uniforms.uFocus.value=v,
     setHover:(f)=>{ mat.uniforms.uHoverFeature.value = f ? info.get(f).index : -1; },
     focus:(f)=>{ if(!f){ mat.uniforms.uFocusing.value=0; } else { mat.uniforms.uFocusing.value=1; mat.uniforms.uSelFeature.value=info.get(f).index; } },

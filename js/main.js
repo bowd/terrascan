@@ -80,10 +80,10 @@ const BAND_NARROW=35, BAND_WIDE=640, BAND_VREF=720; // km band width vs descent 
 // ---------- tunable dials (every magic number, live) ----------
 const DIAL_RANGE={ reliefOpacity:[0,1], reliefBright:[0.6,1.8], coastOpacity:[0,0.9],
   scanStrength:[0,1], scanGain:[0.4,1.8], scanFloor:[0,0.5],
-  modelGain:[0,2], modelHaze:[0,1], bodyOpacity:[0,1.2], focusBand:[0.008,0.12] };
+  modelGain:[0,2], modelHaze:[0,1], bodyOpacity:[0,1.2], bodyGlow:[0,1.6], bodySize:[0.4,1.8], dataLink:[0,1], focusBand:[0.008,0.12] };
 const dials={ reliefOpacity:0.88, reliefBright:1.12, coastOpacity:0.42,
   scanStrength:0.8, scanGain:1.2, scanFloor:0.16,
-  modelGain:1.0, modelHaze:0.62, bodyOpacity:0.9, focusBand:0.03 };
+  modelGain:1.0, modelHaze:0.62, bodyOpacity:0.9, bodyGlow:0.7, bodySize:0.8, dataLink:0.0, focusBand:0.03 };
 function applyDial(name,v){ dials[name]=v;
   if(name==='reliefOpacity') setReliefOpacity();
   else if(name==='reliefBright') relief&&relief.setBright(v);
@@ -92,6 +92,9 @@ function applyDial(name,v){ dials[name]=v;
   else if(name==='scanGain') scan&&scan.setGain(v);
   else if(name==='scanFloor') scan&&scan.setCovFloor(v);
   else if(name==='bodyOpacity'){ structures&&structures.setOpacity(v); dataBodies&&dataBodies.setOpacity(v); clusterParams.opacity=v; }
+  else if(name==='bodyGlow') structures&&structures.setGlow(v);          // 3-D body brightness
+  else if(name==='bodySize') structures&&structures.setSize(v);          // 3-D body blob size
+  else if(name==='dataLink') structures&&structures.setDataLink(v);      // tie bodies to measured survey support
   else if(name==='focusBand') structures&&structures.setFocusBand(v);
   // modelGain & modelHaze are read live in the render loop
 }
@@ -127,6 +130,20 @@ function refreshFromEngine(){                             // recompute ensemble 
   const c=engine.combined();
   scanField.setEnsemble(toScanEns(c)); builtDepth=-999;
   if(dataBodies) dataBodies.rebuild(c, clusterParams);
+  if(structures) structures.setDataSupport(bodySupportFn());   // keep the synthesis↔survey link current
+}
+// for each synthesis blob: how strongly the MEASURED ensemble supports it at its (lat,lon,depth).
+// support = |mean ΔVs| (normalised) × cross-model agreement, sampled at the nearest grid cell.
+function bodySupportFn(){
+  if(!engine) return null;
+  const c=engine.combined(), {nlon,nlat,ndep,depths,dvs,agree}=c;
+  return (lat,lon,depth)=>{
+    let di=0,best=1e9; for(let k=0;k<ndep;k++){ const dd=Math.abs(depths[k]-depth); if(dd<best){best=dd;di=k;} }
+    let j=Math.round((90-lat)/180*nlat-0.5); j=j<0?0:j>nlat-1?nlat-1:j;
+    let i=Math.round((lon+180)/360*nlon-0.5); i=((i%nlon)+nlon)%nlon;
+    const idx=(di*nlat+j)*nlon+i, v=Math.abs(dvs[idx]||0), ag=agree[idx]||0;
+    return Math.max(0,Math.min(1, v/1.6))*ag;
+  };
 }
 function scheduleRefresh(){ if(refreshTimer) clearTimeout(refreshTimer); refreshTimer=setTimeout(refreshFromEngine, 130); }
 function applyCluster(name,t){
@@ -421,6 +438,7 @@ async function loadEnsemble(){
     dataBodies.setCutaway(state.cutaway);
     scanScene.add(dataBodies.group);
     ui.setModels(engine.list());
+    if(structures) structures.setDataSupport(bodySupportFn());   // link the synthesis bodies to the measured survey
     const rb=document.querySelector('#datasrc button[data-src="real"]'); if(rb) rb.textContent='real · '+nModels+' models';
   }catch(e){ console.warn('models load failed', e); }
 }
