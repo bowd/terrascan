@@ -23,7 +23,7 @@ export function makeReliefEarth(){
   const mat=new THREE.ShaderMaterial({
     transparent:true, depthTest:false, depthWrite:false, side:THREE.DoubleSide,
     uniforms:{ uColor:{value:colorTex}, uTopo:{value:topoTex}, uOpacity:{value:0.6}, uBright:{value:1.12},
-      uDisp:{value:DISP}, uCutR:{value:NOCUT}, uPeel:{value:0} },
+      uDisp:{value:DISP}, uCutR:{value:NOCUT}, uCutFade:{value:0.05}, uPeel:{value:0} },
     vertexShader:`
       precision highp float;
       uniform sampler2D uTopo; uniform float uDisp;
@@ -43,9 +43,9 @@ export function makeReliefEarth(){
     fragmentShader:`
       precision highp float;
       varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying float vH; varying float vR;
-      uniform sampler2D uColor, uTopo; uniform float uOpacity, uBright, uCutR, uPeel;
+      uniform sampler2D uColor, uTopo; uniform float uOpacity, uBright, uCutR, uCutFade, uPeel;
       void main(){
-        if(vR > uCutR + 0.0006) discard;                 // peel: drop everything above the cut
+        float top=uCutR+uCutFade; if(vR > top) discard;  // peel: discard above the SOFT cut band
         bool land = vH > ${SEA.toFixed(3)};
         vec3 col=texture2D(uColor,vUv).rgb;
         // hill-shade from the elevation gradient
@@ -60,15 +60,15 @@ export function makeReliefEarth(){
         // honest encoding: land = measured (bright); ocean floor = no data -> estimated (dim, cool)
         float estimated = land ? 0.0 : 1.0;
         col = mix(col, mix(col,vec3(0.10,0.14,0.20),0.6), estimated);
-        // emphasise the freshly-cut surface: a bright band right at the cut radius
-        float cutBand = (uCutR<${NOCUT.toFixed(1)}) ? smoothstep(uCutR-0.006, uCutR, vR) : 0.0;
-        col += vec3(0.5,0.72,0.95)*cutBand*0.7;
-        // opacity: the surface reads strongly by default; peel makes the cut face near-solid.
-        // land = measured (solid), ocean floor = estimated (a bit lighter but still present)
+        // opacity: the surface reads strongly; land = measured (solid), ocean floor = estimated (lighter)
         float aLand = mix(0.82, 1.0, uPeel);
         float aOcean= mix(0.62, 0.55, uPeel);
         float a = (land?aLand:aOcean) * uOpacity * (0.62+0.38*ndv);
-        a = max(a, cutBand*0.95*uOpacity);
+        // SOFT CUT: instead of snapping off, the surface DISSOLVES over the band toward the cut,
+        // so it melts into the wireframe/interior below (gradual merge, no hard edge).
+        float fade = (uCutR<${NOCUT.toFixed(1)}) ? (1.0 - smoothstep(uCutR, top, vR)) : 1.0;
+        a *= fade;
+        col += vec3(0.42,0.62,0.88) * (1.0-fade) * 0.28;   // gentle cool wash on the dissolving rim
         gl_FragColor=vec4(col, a);
       }`,
   });
@@ -78,7 +78,7 @@ export function makeReliefEarth(){
   const wgeo=new THREE.SphereGeometry(1.0, 256, 128);
   const wmat=new THREE.ShaderMaterial({
     transparent:true, depthTest:false, depthWrite:false, side:THREE.DoubleSide,
-    uniforms:{ uTopo:{value:topoTex}, uCutR:{value:NOCUT}, uOpacity:{value:0.0} },
+    uniforms:{ uTopo:{value:topoTex}, uCutR:{value:NOCUT}, uCutFade:{value:0.05}, uOpacity:{value:0.0} },
     vertexShader:`
       precision highp float;
       uniform sampler2D uTopo;
@@ -95,14 +95,16 @@ export function makeReliefEarth(){
     fragmentShader:`
       precision highp float;
       varying vec3 vN; varying vec3 vV; varying float vH;
-      uniform float uCutR, uOpacity;
+      uniform float uCutR, uCutFade, uOpacity;
       void main(){
         if(vH > ${SEA.toFixed(3)}) discard;             // oceans only
-        if(1.0 > uCutR + 0.0006) discard;               // below the cut: we're beneath the sea, hide it
+        // fade the sea out as the cut descends through it, so sea level hands off gradually
+        float wfade = 1.0 - smoothstep(uCutR, uCutR+uCutFade, 1.0);
+        if(wfade <= 0.001) discard;                     // fully below the cut: beneath the sea
         float ndv=clamp(dot(normalize(vN),normalize(vV)),0.0,1.0);
         vec3 deep=vec3(0.02,0.10,0.22), shallow=vec3(0.10,0.32,0.46);
         vec3 col=mix(deep,shallow,ndv) + vec3(0.4,0.6,0.8)*pow(1.0-ndv,4.0)*0.5;
-        gl_FragColor=vec4(col, uOpacity*(0.45+0.55*ndv));
+        gl_FragColor=vec4(col, uOpacity*(0.45+0.55*ndv)*wfade);
       }`,
   });
   const water=new THREE.Mesh(wgeo,wmat); water.renderOrder=2; water.visible=false;
