@@ -37,10 +37,16 @@ canvas{display:block}
 
 /* ---------- floating glass HUD (two loose columns of panes) ---------- */
 .hud{position:fixed;top:14px;bottom:14px;width:306px;z-index:5;display:flex;flex-direction:column;gap:12px;
-  pointer-events:none;overflow:visible}
+  pointer-events:none;
+  overflow-y:auto;overflow-x:visible;overscroll-behavior:contain;   /* invisible scroll area */
+  scrollbar-width:none;-ms-overflow-style:none;padding-bottom:8px}
+.hud::-webkit-scrollbar{width:0;height:0;display:none}
 .hud-left{left:14px}
 .hud-right{right:14px}
-.hud>*{pointer-events:auto}
+.hud>*{pointer-events:auto;flex:0 0 auto}                            /* cards keep natural height; the column scrolls */
+/* left column: the brand pane stays pinned and the rest scrolls UNDER it */
+.hud-left .brand-card{position:sticky;top:0;z-index:6;
+  background:linear-gradient(158deg,rgba(20,27,44,.92),rgba(8,11,20,.88))}
 
 .card{position:relative;border-radius:16px;padding:13px 15px;
   background:linear-gradient(158deg,rgba(30,38,58,.46),rgba(10,14,24,.38));
@@ -115,13 +121,16 @@ canvas{display:block}
 .dvs-bar{background:linear-gradient(90deg,#c0202e 0%,#ff5e5e 17%,#ffb08a 33%,#eef2f6 50%,#9ec4ff 67%,#5a8bff 83%,#1438b0 100%)}
 .legend-ends{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--dim);margin:4px 1px 10px}
 .legend-key{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
-.legend-key li{font-size:11.5px;line-height:1.45;color:var(--txt);display:flex;gap:8px;align-items:flex-start}
+/* swatch sits to the left (absolute) so the description flows as normal inline text
+   — making the <li> a flex container turned every inline <b>/word into its own item */
+.legend-key li{font-size:11.5px;line-height:1.45;color:var(--txt);position:relative;padding-left:20px}
+.legend-key li .sw{position:absolute;left:0;top:4px;margin:0}
 .legend-key b{color:#eaf3ff;font-weight:600}
 .sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto;margin-top:2px;box-shadow:0 0 7px currentColor}
 .sw.hot{background:#ff5340;color:#ff5340}.sw.cold{background:#5a8bff;color:#5a8bff}
 .sw.faint{background:linear-gradient(90deg,#5a8bff66,transparent);box-shadow:none;border:1px solid var(--stroke)}
 .sw.hatch{background:repeating-linear-gradient(45deg,#9aa3b6 0 1.5px,transparent 1.5px 3.5px);box-shadow:none;border:1px solid var(--stroke)}
-.legend-key.chips li{font-size:11px;color:var(--dim);align-items:center}
+.legend-key.chips li{font-size:11px;color:var(--dim)}
 .legend-foot{font-size:10.5px;color:var(--faint);font-style:italic;margin:9px 0 0}
 #datasrc{margin-top:9px}
 .src-note{font-size:10px;line-height:1.45;color:var(--faint);font-style:italic;margin:8px 0 2px}
@@ -226,8 +235,9 @@ body.focusing .hud-right{opacity:0;pointer-events:none;transition:opacity .25s}
 #vizmode{margin-bottom:2px}
 
 /* ---------- toggles + advanced ---------- */
-.toggles{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 10px}
-.toggle{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim);cursor:pointer}
+.toggles{display:grid;grid-template-columns:1fr 1fr;gap:9px 12px}
+.toggle{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim);cursor:pointer;min-width:0}
+.toggle span{min-width:0}
 .toggle input{appearance:none;-webkit-appearance:none;width:28px;height:15px;border-radius:9px;position:relative;flex:0 0 auto;
   background:rgba(120,160,220,.2);border:1px solid var(--stroke);transition:.18s;cursor:pointer}
 .toggle input::after{content:"";position:absolute;top:1px;left:1px;width:11px;height:11px;border-radius:50%;background:#8fa1bd;transition:.18s}
