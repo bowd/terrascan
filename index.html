@@ -39,6 +39,7 @@
       <div class="rail-actions">
         <button id="tour-btn" class="btn primary">▶ Take the tour</button>
         <button id="guide-btn" class="btn">ⓘ What am I seeing?</button>
+        <button id="glossary-btn" class="btn">▦ Feature glossary</button>
         <button id="data-btn" class="btn">✦ How we know — public data</button>
       </div>
     </header>
@@ -140,6 +141,7 @@
         <label class="toggle"><input type="checkbox" id="t-coast" checked /><span>Coastlines</span></label>
         <label class="toggle"><input type="checkbox" id="t-borders" /><span>Countries</span></label>
         <label class="toggle"><input type="checkbox" id="t-markers" checked /><span>Labels</span></label>
+        <label class="toggle"><input type="checkbox" id="t-foot" /><span>Footprints</span></label>
         <label class="toggle"><input type="checkbox" id="t-spin" checked /><span>Spin</span></label>
       </div>
       <details class="advanced">
@@ -190,6 +192,17 @@
       <h2>Everything public that maps the Earth's inside</h2>
       <p>We have never drilled past ~12 km. Everything deeper is <em>inferred</em> — mostly from earthquakes, plus gravity, magnetism, tiny particles, and lab physics. These are the public datasets &amp; models behind that inference.</p>
       <div id="data-body" class="data-body"><p class="muted">gathering sources…</p></div>
+    </div>
+  </div>
+
+  <!-- feature glossary / taxonomy -->
+  <div id="glossary" class="modal-wrap hidden">
+    <div class="modal">
+      <button id="glossary-close" class="modal-close">✕</button>
+      <span class="kicker">FIELD GUIDE</span>
+      <h2>What are these features?</h2>
+      <p>A quick taxonomy of what lives inside the Earth. <b style="color:#7fb0ff">Blue = fast = cold/stiff</b>; <b style="color:#ff7a6a">red = slow = hot/soft</b>. "Motion" is inferred from temperature, not measured.</p>
+      <div id="glossary-body" class="gloss-body"></div>
     </div>
   </div>
 

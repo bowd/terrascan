@@ -32,6 +32,10 @@ await setChk('#t-spin', false);
 await page.waitForTimeout(700);
 
 await page.screenshot({path:'shots/01-surface.png'});
+await page.click('#glossary-btn'); await page.waitForTimeout(400); await page.screenshot({path:'shots/18-glossary.png'});
+console.log('glossary items:', await page.evaluate(()=>document.querySelectorAll('#glossary-body .gloss-item').length));
+await page.click('#glossary-close');
+await setChk('#t-foot', true); await setChk('#t-struct', false); await setDepth(660); await page.waitForTimeout(1300); await page.screenshot({path:'shots/19-footprints.png'}); await setChk('#t-struct', true); await setChk('#t-foot', false);
 await setDepth(80); await page.waitForTimeout(1200); await page.screenshot({path:'shots/15-shallow.png'});
 console.log('temp@80:', await page.evaluate(()=>document.querySelector('#ro-temp').textContent+' | '+document.querySelector('#temp-cap').textContent));
 await setDepth(2891); await page.waitForTimeout(1400); await page.screenshot({path:'shots/02-cmb.png'});

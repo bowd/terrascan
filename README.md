@@ -27,6 +27,8 @@ Each depth also reports its **temperature** (K and °C, flagged as a modelled es
 
 **Reading the colour:** it is *seismic-wave speed* = the rock's temperature & stiffness, **not** motion. Blue = fast = cold/stiff (usually sinking); red = slow = hot/soft (usually rising); neutral = ordinary average mantle (measured, nothing unusual); hatched/faint = no readings, theory's guess only.
 
+A **Feature glossary** button defines every type (craton, ridge, slab, plume, LLSVP, ULVZ); the **Footprints** toggle projects each body's outline radially onto the surface so you can see where it sits on the map; and hovering or extracting a body links straight to the public datasets & papers behind it.
+
 A built-in **"How we know"** panel lists the public datasets & methods behind all of this (tomography models, normal modes, gravity, geoneutrinos, the core field, …) with links.
 
 It is deliberately **not** binary "scanned / not-scanned." The classification is

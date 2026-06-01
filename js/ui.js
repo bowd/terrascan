@@ -1,7 +1,7 @@
 // ui.js — owns the left-rail DOM: depth controls, the scan legend, the readout
 // (with the colour↔baseline bridge), the guided intro, and the tour caption.
 import { GEO_LAYERS, EARTH_RADIUS, DEPTH_STOPS, sliderToDepth, depthToSlider } from './earthModel.js';
-import { TYPE_INFO } from './tomography.js';
+import { TYPE_INFO, CATEGORY } from './tomography.js';
 
 const $ = (s)=>document.querySelector(s);
 const ANOM = {fast:'#6f9bff', slow:'#ff6b5a'};
@@ -22,7 +22,7 @@ export function initControls(h){
   const tog=(id,name)=>$(id).addEventListener('change',e=>h.onToggle(name,e.target.checked));
   tog('#t-struct','struct'); tog('#t-scan','scan'); tog('#t-infer','infer'); tog('#t-theory','theory');
   tog('#t-relief','relief'); tog('#t-coast','coast'); tog('#t-borders','borders');
-  tog('#t-markers','markers'); tog('#t-spin','spin');
+  tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-spin','spin');
 
   $('#scan-opacity').addEventListener('input',e=>h.onScanOpacity(+e.target.value/100));
   $('#surface-opacity').addEventListener('input',e=>h.onReliefOpacity(+e.target.value/100));
@@ -54,6 +54,18 @@ export function initControls(h){
   $('#data-btn').addEventListener('click',()=>data.classList.remove('hidden'));
   $('#data-close').addEventListener('click',()=>data.classList.add('hidden'));
   data.addEventListener('click',e=>{if(e.target===data)data.classList.add('hidden');});
+
+  // glossary modal (taxonomy of feature types)
+  const gloss=$('#glossary');
+  $('#glossary-btn').addEventListener('click',()=>gloss.classList.remove('hidden'));
+  $('#glossary-close').addEventListener('click',()=>gloss.classList.add('hidden'));
+  gloss.addEventListener('click',e=>{if(e.target===gloss)gloss.classList.add('hidden');});
+  $('#glossary-body').innerHTML=Object.entries(TYPE_INFO).map(([k,t])=>{
+    const c='#'+((CATEGORY[k]&&CATEGORY[k].color||0x888888)).toString(16).padStart(6,'0');
+    return `<div class="gloss-item"><span class="gloss-dot" style="background:${c};color:${c}"></span>`+
+      `<div class="gloss-txt"><div class="gloss-head"><b>${t.label}</b><span class="gloss-nat">${t.nature||''}</span></div>`+
+      `<div class="gloss-depth">${t.depth||''}</div><div class="gloss-mean">${t.meaning}</div></div></div>`;
+  }).join('');
 
   // depth rail (coloured cross-section of the whole planet)
   const rail=$('#depth-rail');
@@ -105,7 +117,10 @@ export function initControls(h){
       $('#focus-meaning').textContent=ti.meaning||'';
       $('#focus-depth').textContent=f.dTop.toLocaleString()+'–'+f.dBot.toLocaleString()+' km';
       $('#focus-anom').textContent= f.anomaly==='fast'?'fast → cold / sinking':'slow → hot / rising';
-      $('#focus-src').textContent=ti.src||'—';
+      const links=ti.links||[];
+      $('#focus-src').innerHTML = links.length
+        ? links.map(l=>`<a href="${l.url}" target="_blank" rel="noopener">${l.label} ↗</a>`).join('')
+        : (ti.src||'—');
       el.classList.remove('hidden');
     },
     readout(o){

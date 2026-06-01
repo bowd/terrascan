@@ -73,10 +73,53 @@ const FRAG=`precision highp float;
     gl_FragColor=vec4(vColor*vHi*edge*vA*uOpacity, 1.0);
   }`;
 
+// 2D convex hull (monotone chain)
+function convexHull(pts){
+  const p=pts.slice().sort((a,b)=>a.x-b.x||a.y-b.y); if(p.length<3) return p;
+  const cr=(o,a,b)=>(a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);
+  const lo=[]; for(const q of p){ while(lo.length>=2&&cr(lo[lo.length-2],lo[lo.length-1],q)<=0) lo.pop(); lo.push(q); }
+  const up=[]; for(let i=p.length-1;i>=0;i--){ const q=p[i]; while(up.length>=2&&cr(up[up.length-2],up[up.length-1],q)<=0) up.pop(); up.push(q); }
+  lo.pop(); up.pop(); return lo.concat(up);
+}
+// each feature's points projected radially to the surface -> footprint outline + a stem
+function buildFootprints(footData){
+  const group=new THREE.Group(); group.renderOrder=6; group.visible=false;
+  const byFeature=new Map();
+  for(const {f,dirs,midR} of footData){
+    const com=new THREE.Vector3(); dirs.forEach(d=>com.add(d)); if(com.lengthSq()<1e-6) continue; com.normalize();
+    const ref=Math.abs(com.y)<0.95?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
+    const u=new THREE.Vector3().crossVectors(ref,com).normalize();
+    const v=new THREE.Vector3().crossVectors(com,u).normalize();
+    let hull=convexHull(dirs.map(d=>({x:d.dot(u),y:d.dot(v)}))); if(hull.length<3) continue;
+    const cx=hull.reduce((s,p)=>s+p.x,0)/hull.length, cy=hull.reduce((s,p)=>s+p.y,0)/hull.length;
+    hull=hull.map(p=>({x:cx+(p.x-cx)*1.12, y:cy+(p.y-cy)*1.12}));   // small outward margin
+    const verts=[];
+    for(const p of hull){
+      const k=Math.max(0,1-p.x*p.x-p.y*p.y);
+      const dir=com.clone().multiplyScalar(Math.sqrt(k)).addScaledVector(u,p.x).addScaledVector(v,p.y).normalize();
+      verts.push(dir.x*1.002, dir.y*1.002, dir.z*1.002);
+    }
+    const col=f.anomaly==='fast'?0x6f9bff:0xff6b5a;
+    const lg=new THREE.BufferGeometry(); lg.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+    const lmat=new THREE.LineBasicMaterial({color:col,transparent:true,opacity:0.55,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending});
+    const loop=new THREE.LineLoop(lg,lmat); loop.renderOrder=6; group.add(loop);
+    const a=com.clone().multiplyScalar(midR), b=com.clone().multiplyScalar(1.002);   // stem: feature -> surface
+    const sg=new THREE.BufferGeometry(); sg.setAttribute('position',new THREE.Float32BufferAttribute([a.x,a.y,a.z,b.x,b.y,b.z],3));
+    const smat=new THREE.LineBasicMaterial({color:col,transparent:true,opacity:0.15,depthTest:false,depthWrite:false,blending:THREE.AdditiveBlending});
+    group.add(new THREE.Line(sg,smat));
+    byFeature.set(f,{lmat,smat});
+  }
+  function setFootHover(f){
+    for(const [,m] of byFeature){ m.lmat.opacity=0.55; m.smat.opacity=0.15; }
+    if(f && byFeature.has(f)){ const m=byFeature.get(f); m.lmat.opacity=0.95; m.smat.opacity=0.5; }
+  }
+  return {group, setFootHover};
+}
+
 export function makeStructures(){
   const rnd=mulberry32(20260601);
   const off=[],scl=[],ca=[],cb=[],dep=[],alp=[],fea=[];
-  const pickProxies=[]; const info=new Map();
+  const pickProxies=[]; const info=new Map(); const footData=[];
   const proxyGeo=new THREE.SphereGeometry(1,8,6), proxyMat=new THREE.MeshBasicMaterial();
   let fi=0;
 
@@ -93,6 +136,7 @@ export function makeStructures(){
     const midD=(f.dTop+f.dBot)/2, rC=depthToUnit(midD);
     const aCol=ANOM[f.anomaly], bCol=catRGB(CATEGORY[f.type].id);
     const det=sampleDetail(f,rnd);
+    footData.push({f, dirs:det.map(([la,lo])=>latLonToVec3(la,lo,1)), midR:rC});
     const bigR=Math.max(0.05, Math.min(0.12, Math.max(f.latExt,f.lonExt)*Math.PI/180*rC*0.42));
     const stride=Math.max(2, Math.floor(det.length/12));
     for(let i=0;i<det.length;i++){
@@ -127,9 +171,10 @@ export function makeStructures(){
       uSelFeature:{value:-1}, uFocusing:{value:0} } });
 
   const mesh=new THREE.Mesh(g,mat); mesh.frustumCulled=false; mesh.renderOrder=4;
+  const foot=buildFootprints(footData);
 
   return {
-    group:mesh, pickProxies,
+    group:mesh, pickProxies, footGroup:foot.group, setFootHover:foot.setFootHover,
     setCurDepth:(u)=>mat.uniforms.uCurDepth.value=u,
     setMode:(m)=>mat.uniforms.uMode.value=m,
     setOpacity:(o)=>mat.uniforms.uOpacity.value=o,

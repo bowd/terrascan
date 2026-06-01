@@ -55,7 +55,7 @@ theoryScene.add(theoryShells);
 const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
   showStruct:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
-  showBorders:false, showMarkers:true, spin:true,
+  showBorders:false, showMarkers:true, showFoot:false, spin:true,
   diving:false, touring:false, contextLost:false, focused:null,
 };
 
@@ -81,6 +81,7 @@ async function init(){
   structures=makeStructures();
   structures.setOpacity(0.9);
   scanScene.add(structures.group);
+  structures.footGroup.visible=state.showFoot; scanScene.add(structures.footGroup);
 
   relief=makeReliefEarth();
   relief.setOpacity(state.reliefOpacity); relief.mesh.visible=state.showRelief;
@@ -144,6 +145,7 @@ const handlers={
     refreshFeaturePanel(); },
   onToggle:(name,v)=>{
     if(name==='struct'){ state.showStruct=v; structures.group.visible=v; }
+    else if(name==='foot'){ state.showFoot=v; structures.footGroup.visible=v; }
     else if(name==='scan'){ state.showScan=v; scan.mesh.visible=v; }
     else if(name==='infer'){ state.showInfer=v; scan.setInfer(v?1:0); }
     else if(name==='theory') state.showTheory=v;
@@ -263,10 +265,11 @@ function initPicking(){
   el.addEventListener('pointermove',e=>{
     if(state.focused || !structures.group.visible){ return; }
     const f=pickAt(e.clientX,e.clientY); hovered=f;
+    structures.setFootHover(f);
     if(f){ ui.tip(f, e.clientX, e.clientY); el.style.cursor='pointer'; }
     else { ui.tip(null); el.style.cursor=''; }
   });
-  el.addEventListener('pointerleave',()=>ui.tip(null));
+  el.addEventListener('pointerleave',()=>{ ui.tip(null); structures.setFootHover(null); });
   el.addEventListener('click',e=>{
     if(downPos && Math.hypot(e.clientX-downPos.x,e.clientY-downPos.y)>6) return; // was a drag
     if(state.focused || !structures.group.visible) return;

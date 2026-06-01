@@ -21,14 +21,57 @@ export const CATEGORY = {
 };
 const CAT_BY_ID = Object.values(CATEGORY).sort((a,b)=>a.id-b.id);
 
-// plain-language meaning + representative PUBLIC sources, per feature type
+// plain-language taxonomy + verified PUBLIC links, per feature type.
+// Order here is the glossary order (shallow → deep). `nature` = the velocity sign.
 export const TYPE_INFO = {
-  slab:  {label:'subducted slab',        meaning:'Cold, dense former ocean floor sinking through the mantle. Seismic waves run FAST through it because cold rock is stiffer — that fastness is how we spot it; the sinking is inferred.', src:'P-wave tomography: LLNL-G3Dv3, UU-P07, MITP08 · Atlas of the Underworld'},
-  llsvp: {label:'LLSVP — hot pile',      meaning:'A continent-sized pile of hot, slow (probably chemically distinct) rock resting on the core. One under Africa, one under the Pacific.', src:'S40RTS, SEMUCB-WM1, SP12RTS · IRIS EMC'},
-  ulvz:  {label:'ultra-low-velocity zone',meaning:'A thin, extreme patch on the core boundary — most likely partial melt — usually hugging the edge of a hot pile.', src:'ScS / SPdKS / PcP wave studies · SEMUCB-WM1'},
-  plume: {label:'mantle plume',          meaning:'A narrow column of hot, buoyant rock rising toward the surface and feeding a volcanic hotspot. Slow because it is hot; the rising is inferred from that.', src:'Full-waveform SEMUCB-WM1 (French & Romanowicz 2015)'},
-  craton:{label:'cratonic root',         meaning:'The ancient, cold, deep keel beneath an old continent. Fast because it is cold and dehydrated; essentially fixed, not flowing.', src:'Surface-wave tomography: SAVANI, S362ANI, SEMUCB-WM1'},
-  ridge: {label:'ridge / rift',          meaning:'Shallow hot upwelling beneath a spreading ridge or continental rift. Slow because it is hot and partly molten.', src:'Surface-wave & ambient-noise tomography'},
+  craton:{label:'Cratonic root', nature:'fast → cold, stiff', depth:'shallow keel · ~50–300 km',
+    meaning:'The ancient, cold, deep keel beneath an old continent. Fast because it is cold and dehydrated — essentially fixed, not flowing.',
+    links:[
+      {label:'SEMUCB-WM1 model · IRIS/EarthScope EMC', url:'https://ds.iris.edu/ds/products/emc-semucb-wm1/'},
+      {label:'SATONA — adjoint tomography of N. America · EMC', url:'https://ds.iris.edu/ds/products/emc-satona/'},
+      {label:'Pearson et al. 2021, “Deep roots & cratons” · Nature', url:'https://doi.org/10.1038/s41586-021-03600-5'},
+      {label:'SubMachine — explore the models', url:'https://submachine.earth.ox.ac.uk/'},
+    ]},
+  ridge: {label:'Ridge / rift', nature:'slow → hot, partly molten', depth:'shallow · ~0–200 km',
+    meaning:'Shallow hot upwelling beneath a mid-ocean spreading ridge or a continental rift. Slow because it is hot and partly molten.',
+    links:[
+      {label:'Forsyth et al. 1998, MELT Experiment · Science', url:'https://doi.org/10.1126/science.280.5367.1215'},
+      {label:'Eilon & Abers 2017, ridge melt · Science Advances', url:'https://doi.org/10.1126/sciadv.1602829'},
+      {label:'IRIS/EarthScope EMC — model repository', url:'https://ds.iris.edu/ds/products/emc/'},
+      {label:'SubMachine — explore the models', url:'https://orfeus-eu.org/submachine/'},
+    ]},
+  slab:  {label:'Subducted slab', nature:'fast → cold, sinking', depth:'upper → lower mantle · ~80–2,800 km',
+    meaning:'Cold, dense former ocean floor sinking through the mantle. It reads FAST because cold rock is stiffer — that fastness is how we spot it; the sinking is inferred.',
+    links:[
+      {label:'Atlas of the Underworld (94 mapped slabs)', url:'https://www.atlas-of-the-underworld.org/'},
+      {label:'van der Meer et al. 2018 (the Atlas) · Tectonophysics', url:'https://doi.org/10.1016/j.tecto.2017.10.004'},
+      {label:'IRIS/EarthScope EMC — model repository', url:'https://ds.iris.edu/ds/products/emc/'},
+      {label:'SubMachine — explore the models', url:'https://orfeus-eu.org/submachine/'},
+    ]},
+  plume: {label:'Mantle plume', nature:'slow → hot, rising', depth:'surface → deep mantle',
+    meaning:'A narrow column of hot, buoyant rock rising toward the surface and feeding a volcanic hotspot. Slow because it is hot; the rising is inferred from that.',
+    links:[
+      {label:'French & Romanowicz 2015, broad plumes · Nature', url:'https://doi.org/10.1038/nature14876'},
+      {label:'SEMUCB-WM1 model · IRIS/EarthScope EMC', url:'http://ds.iris.edu/ds/products/emc-semucb-wm1/'},
+      {label:'SEMUCB-WM1 model + code · GitHub', url:'https://github.com/bsl-group/SEMUCB-WM1-Model'},
+      {label:'SubMachine — explore the models', url:'https://submachine.earth.ox.ac.uk/'},
+    ]},
+  llsvp: {label:'LLSVP — hot pile', nature:'slow → hot (chemically distinct?)', depth:'lowermost mantle · ~1,800–2,890 km',
+    meaning:'A continent-sized pile of hot, slow (probably chemically distinct) rock resting on the core. There are two — under Africa and under the Pacific.',
+    links:[
+      {label:'SEMUCB-WM1 model · IRIS/EarthScope EMC', url:'https://ds.iris.edu/ds/products/emc-semucb-wm1/'},
+      {label:'Garnero & McNamara 2008, lower mantle · Science', url:'https://doi.org/10.1126/science.1148028'},
+      {label:'Atlas of the Underworld', url:'https://www.atlas-of-the-underworld.org/'},
+      {label:'SubMachine — explore the models', url:'https://orfeus-eu.org/submachine/'},
+    ]},
+  ulvz:  {label:'Ultra-low-velocity zone', nature:'slow → extreme (melt?)', depth:'on the core · ~2,890 km',
+    meaning:'A thin, extreme patch on the core–mantle boundary — most likely partial melt — usually hugging the edge of a hot pile.',
+    links:[
+      {label:'Li, McNamara, Garnero & Yu 2017 · Nature Communications', url:'https://doi.org/10.1038/s41467-017-00219-x'},
+      {label:'Li, Leng, Jenkins & Cottaar 2022 (near Hawaii) · Nat. Commun.', url:'https://doi.org/10.1038/s41467-022-30502-5'},
+      {label:'IRIS/EarthScope EMC — model repository', url:'http://ds.iris.edu/ds/products/emc/'},
+      {label:'SubMachine — explore the models', url:'https://orfeus-eu.org/submachine/'},
+    ]},
 };
 
 // anomaly: 'fast' (cold/sinking, blue) or 'slow' (hot/rising, red)
