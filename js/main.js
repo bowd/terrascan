@@ -13,6 +13,7 @@ import { makePipeline } from './postfx.js';
 import { initControls } from './ui.js';
 import { DATA_GROUPS, dataSourcesHTML } from './datasources.js';
 import { EXPERIMENTS, EXP_KIND } from './experiments.js';
+import { makeDataBodies } from './databodies.js';
 
 const TEX_W=1024, TEX_H=512;
 const PIX=Math.min(window.devicePixelRatio||1, 2);
@@ -96,7 +97,7 @@ const smooth01=(x)=>{ x=x<0?0:x>1?1:x; return x*x*(3-2*x); };
 const peelFactor=(d)=> 1 - 0.86*smooth01((d-50)/520);   // 1 @50km → ~0.14 by ~570km
 function setReliefOpacity(){ relief&&relief.setOpacity(dials.reliefOpacity*peelFactor(state.depth)); }
 
-let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj, expObj;
+let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj, expObj, dataBodies;
 let earthWire, hovered=null, glideCam=null, glideTarget=null, savedCam=null, savedTarget=null;
 const raycaster=new THREE.Raycaster(), ptr=new THREE.Vector2(); let downPos=null;
 const DOT_GEO=new THREE.SphereGeometry(0.012, 12, 12);
@@ -200,9 +201,10 @@ const handlers={
   onDial:(name,t)=>{ const r=DIAL_RANGE[name]; if(r) applyDial(name, r[0]+(r[1]-r[0])*t); },
   onFocus:(t)=>applyFocus(t),
   onSource:(s)=>{ state.source=s; scanField.setSource(s); builtDepth=-999;
-    structures.group.visible = (s==='real') ? false : state.showStruct;  // bodies are synthetic; step aside for real data
+    structures.group.visible = (s==='real') ? false : state.showStruct;  // hand-built bodies step aside
+    if(dataBodies) dataBodies.group.visible = (s==='real');               // real data shown AS structures
     ui.sourceNote(s==='real'
-      ? 'Ensemble mean ΔVs of three real models (SGLOBE-rani · SEISGLOB2 · TX2011). Hatched/faint where the models disagree = estimated, not well-mapped.'
+      ? 'Real ensemble of 5 models (SGLOBE-rani · SEISGLOB2 · TX2011 · S40RTS · SEMUCB-WM1), drawn as 3-D structures — opacity ∝ |ΔVs| × cross-model agreement (faint = models disagree). Labels are the synthesis.'
       : 'A hand-built, geographically-faithful synthesis of published features.'); },
   onDive:()=>{ stopTour(); state.diving?stopDive():startDive(); },
   onTickJump:(d)=>{ stopTour(); stopDive(); animateTo(d); },
@@ -219,6 +221,7 @@ function setDepth(d){
   state.depth=d; pendingDepth=d;
   scan.setRadius(depthToUnit(d));
   structures.setCurDepth(d/EARTH_RADIUS);
+  if(dataBodies) dataBodies.setCurDepth(d/EARTH_RADIUS);
   setReliefOpacity();   // peel the surface back with depth
   // sample a hair below so velocities agree with the (deeper) layer label at a discontinuity
   const gl=geoLayerAt(d), p=premAt(Math.min(d+0.5, EARTH_RADIUS));
@@ -300,7 +303,12 @@ async function loadEnsemble(){
     const j=await fetch('./data/tomo-ensemble.json').then(r=>r.json());
     const dvs=new Int8Array(Uint8Array.from(atob(j.dvs),c=>c.charCodeAt(0)).buffer);
     const agree=Uint8Array.from(atob(j.agree),c=>c.charCodeAt(0));
-    scanField.setEnsemble({depths:j.depths, nlon:j.nlon, nlat:j.nlat, dvsScale:j.dvsScale, dvs, agree, models:j.models});
+    const ens={depths:j.depths, nlon:j.nlon, nlat:j.nlat, dvsScale:j.dvsScale, dvs, agree, models:j.models};
+    scanField.setEnsemble(ens);
+    dataBodies=makeDataBodies(ens);                          // structural representation of the real data
+    dataBodies.group.visible=(state.source==='real');
+    dataBodies.setCurDepth(state.depth/EARTH_RADIUS);
+    scanScene.add(dataBodies.group);
   }catch(e){ console.warn('ensemble load failed', e); }
 }
 

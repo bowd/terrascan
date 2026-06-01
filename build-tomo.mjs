@@ -11,6 +11,8 @@ const MODELS = [
   { name:'SGLOBE-rani', file:'SGLOBE-rani.nc', url:'https://ds.iris.edu/files/products/emc/emc-files/SGLOBE-rani-voigt_percent.nc' },
   { name:'SEISGLOB2',   file:'SEISGLOB2.nc',   url:'https://raw.githubusercontent.com/shuleyu/seismic-tomography-models/master/SEISGLOB2_dvs.nc' },
   { name:'TX2011',      file:'TX2011.nc',      url:'https://raw.githubusercontent.com/shuleyu/seismic-tomography-models/master/TX2011_dvs.nc' },
+  { name:'S40RTS',      file:'S40RTS.nc',      url:'https://raw.githubusercontent.com/shuleyu/seismic-tomography-models/master/S40RTS_dvs.nc' },
+  { name:'SEMUCB-WM1',  file:'SEMUCB.nc',      url:'https://raw.githubusercontent.com/shuleyu/seismic-tomography-models/master/SEMUCB-WM1_dvs.nc' },
 ];
 const DIR='/tmp/tomo';
 
