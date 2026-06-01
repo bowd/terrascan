@@ -211,7 +211,7 @@ const handlers={
     structures.group.visible = (s==='real') ? false : state.showStruct;  // hand-built bodies step aside
     if(dataBodies) dataBodies.group.visible = (s==='real');               // real data shown AS structures
     ui.sourceNote(s==='real'
-      ? 'Real ensemble of 5 models (SGLOBE-rani · SEISGLOB2 · TX2011 · S40RTS · SEMUCB-WM1), drawn as 3-D structures — opacity ∝ |ΔVs| × cross-model agreement (faint = models disagree). Labels are the synthesis.'
+      ? 'Real ensemble of 5 models (SGLOBE-rani · SEISGLOB2 · TX2011 · S40RTS · SEMUCB-WM1), meshed into 3-D isosurfaces — blue = fast/cold bodies (slabs), red = slow/hot bodies (LLSVP piles, plumes). Built only where models agree. Labels are the synthesis.'
       : 'A hand-built, geographically-faithful synthesis of published features.'); },
   onDive:()=>{ stopTour(); state.diving?stopDive():startDive(); },
   onTickJump:(d)=>{ stopTour(); stopDive(); animateTo(d); },

@@ -1,76 +1,121 @@
-// databodies.js — STRUCTURAL representation of the REAL data: turn the ensemble
-// volume (mean ΔVs + agreement) into a 3-D blob cloud, so measured tomography has
-// the same anatomy the synthesis does. Blue = fast/cold, red = slow/hot; opacity
-// scales with |ΔVs| × cross-model agreement (faint where the models disagree).
+// databodies.js — STRUCTURAL representation of the REAL data. The ensemble is a
+// continuous volume, so we extract coherent 3-D SURFACES from it (not a scatter of
+// spheres): an isosurface wrapping the fast/cold anomalies (subducted slabs, blue)
+// and one wrapping the slow/hot anomalies (LLSVP piles & plumes, red). Surfaces are
+// meshed with naive Surface Nets in (lon,lat,depth) grid space, then each vertex is
+// warped onto the globe. Opacity is gated to the depth you're peeled to, so the lit
+// band sweeps through the bodies as you slide — but the whole shape stays visible.
 import * as THREE from 'three';
 import { EARTH_RADIUS, depthToUnit } from './earthModel.js';
 import { latLonToVec3 } from './geo.js';
 
-const COLD=[0.45,0.64,1.0], HOT=[1.0,0.40,0.30];
-const THRESH=0.85;    // |ΔVs| % to emit a structural blob (cores of real anomalies only)
-const STEP=2;         // lat/lon subsample
+const THRESH=0.55;     // |ΔVs| % iso-level for a body surface
+const AGREE_MIN=0.4;   // models must agree this much or the cell is "outside"
 
-// Blobs exist through the whole volume, but only the SHELL near the current depth
-// is drawn — opacity & size collapse away from it. Peeling the depth slider sweeps
-// the lit shell inward, so you read one clean structural surface at a time instead
-// of all 32 layers stacked into a glowing ball.
-const VERT=`precision highp float;
-  uniform mat4 modelViewMatrix, projectionMatrix;
-  uniform float uCurDepth,uFocus;
-  attribute vec3 position, aOffset, aColor;
-  attribute float aScale, aDepth, aAlpha;
-  varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL;
+// ---- naive Surface Nets (table-free) -----------------------------------------
+const CORNER=[[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]];
+const EDGE=[[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]];
+
+function surfaceNets(NX,NY,NZ, field, toWorld){
+  const cellVert=new Int32Array(NX*NY*NZ).fill(-1);
+  const idx=(x,y,z)=>(z*NY+y)*NX+x;
+  const pos=[], dep=[], g=new Float64Array(8);
+  for(let z=0;z<NZ-1;z++)for(let y=0;y<NY-1;y++)for(let x=0;x<NX-1;x++){
+    let mask=0;
+    for(let c=0;c<8;c++){ const o=CORNER[c]; const v=field(x+o[0],y+o[1],z+o[2]); g[c]=v; if(v<0) mask|=(1<<c); }
+    if(mask===0||mask===255) continue;
+    let sx=0,sy=0,sz=0,cnt=0;
+    for(let e=0;e<12;e++){ const a=EDGE[e][0],b=EDGE[e][1],ga=g[a],gb=g[b];
+      if((ga<0)===(gb<0)) continue;
+      const t=ga/(ga-gb), ca=CORNER[a], cb=CORNER[b];
+      sx+=ca[0]+(cb[0]-ca[0])*t; sy+=ca[1]+(cb[1]-ca[1])*t; sz+=ca[2]+(cb[2]-ca[2])*t; cnt++; }
+    const w=toWorld(x+sx/cnt, y+sy/cnt, z+sz/cnt);
+    cellVert[idx(x,y,z)]=pos.length/3; pos.push(w.x,w.y,w.z); dep.push(w.d);
+  }
+  const indices=[];
+  const quad=(a,b,c,d)=>{ if(a<0||b<0||c<0||d<0) return; indices.push(a,b,d, b,c,d); };
+  for(let z=1;z<NZ-1;z++)for(let y=1;y<NY-1;y++)for(let x=1;x<NX-1;x++){
+    const v0=field(x,y,z)<0;
+    if(v0!==(field(x+1,y,z)<0)) quad(cellVert[idx(x,y,z)],cellVert[idx(x,y-1,z)],cellVert[idx(x,y-1,z-1)],cellVert[idx(x,y,z-1)]);
+    if(v0!==(field(x,y+1,z)<0)) quad(cellVert[idx(x,y,z)],cellVert[idx(x,y,z-1)],cellVert[idx(x-1,y,z-1)],cellVert[idx(x-1,y,z)]);
+    if(v0!==(field(x,y,z+1)<0)) quad(cellVert[idx(x,y,z)],cellVert[idx(x-1,y,z)],cellVert[idx(x-1,y-1,z)],cellVert[idx(x,y-1,z)]);
+  }
+  return {pos,dep,indices};
+}
+
+// ---- shader: translucent fresnel body, brightest at the lit depth band ---------
+const VERT=`
+  attribute float aDepth;
+  uniform float uCurDepth,uBand;
+  varying float vProx; varying vec3 vN; varying vec3 vView;
   void main(){
-    float prox = 1.0 - smoothstep(0.0, uFocus, abs(aDepth-uCurDepth));
-    vHi = 0.40 + 0.9*prox; vColor=aColor; vA=aAlpha*prox; vL=position;
-    vec3 wp = aOffset + position*aScale*(0.35+0.65*prox);   // shrink away from the lit shell
-    gl_Position = projectionMatrix*modelViewMatrix*vec4(wp,1.0);
+    vProx = 1.0 - smoothstep(0.0, uBand, abs(aDepth-uCurDepth));
+    vec4 mv = modelViewMatrix*vec4(position,1.0);
+    vN = normalize(normalMatrix*normal); vView = normalize(-mv.xyz);
+    gl_Position = projectionMatrix*mv;
   }`;
-const FRAG=`precision highp float;
-  uniform float uOpacity;
-  varying vec3 vColor; varying float vHi; varying float vA; varying vec3 vL;
+const FRAG=`
+  uniform vec3 uColor; uniform float uOpacity;
+  varying float vProx; varying vec3 vN; varying vec3 vView;
   void main(){
-    float edge=0.5+0.5*pow(clamp(vL.z*0.5+0.5,0.0,1.0),1.5);
-    gl_FragColor=vec4(vColor*vHi*edge*vA*uOpacity, 1.0);
+    float fres = pow(1.0-abs(dot(normalize(vN),normalize(vView))), 2.0);
+    vec3 col = uColor*(0.42+0.58*vProx) + uColor*fres*0.7;
+    float a  = uOpacity*(0.16+0.62*vProx) + fres*0.18*uOpacity;
+    gl_FragColor = vec4(col, a);
   }`;
+
+function bodyMesh(geom, color){
+  const mat=new THREE.ShaderMaterial({ vertexShader:VERT, fragmentShader:FRAG,
+    transparent:true, depthWrite:false, depthTest:true, side:THREE.DoubleSide,
+    uniforms:{ uColor:{value:new THREE.Color(...color)}, uCurDepth:{value:0}, uBand:{value:0.07}, uOpacity:{value:1} } });
+  const m=new THREE.Mesh(geom,mat); m.frustumCulled=false; m.renderOrder=4; return m;
+}
 
 export function makeDataBodies(ens){
-  const {depths,nlon,nlat,dvsScale,dvs,agree}=ens;
-  const off=[],scl=[],col=[],dep=[],alp=[];
-  for(let di=0; di<depths.length; di++){
-    const rUnit=depthToUnit(depths[di]), dfrac=depths[di]/EARTH_RADIUS;
-    for(let j=0; j<nlat; j+=STEP){
-      const lat=90-(j+0.5)/nlat*180;
-      for(let i=0; i<nlon; i+=STEP){
-        const k=(di*nlat+j)*nlon+i;
-        const v=dvs[k]/dvsScale, ag=agree[k]/255;
-        if(Math.abs(v)<THRESH || ag<0.3) continue;
-        let p=latLonToVec3(lat, -180+(i+0.5)/nlon*360, rUnit);
-        const s=0.028; const maxR=0.985-s; if(p.length()>maxR) p.setLength(maxR);
-        const c = v>0 ? COLD : HOT;
-        off.push(p.x,p.y,p.z); scl.push(s); col.push(c[0],c[1],c[2]);
-        dep.push(dfrac); alp.push(Math.min(1,Math.abs(v)/2.0)*ag*0.85);
-      }
-    }
+  const {depths,nlon,nlat,dvsScale,dvs,agree}=ens, nd=depths.length;
+  // smoothed signed field + agreement gate (light 3-D blur merges specks into bodies)
+  const N=nd*nlat*nlon, sm=new Float32Array(N);
+  const at=(di,j,i)=>dvs[(di*nlat+((j+nlat)%nlat))*nlon+((i%nlon)+nlon)%nlon]/dvsScale;
+  for(let di=0;di<nd;di++)for(let j=0;j<nlat;j++)for(let i=0;i<nlon;i++){
+    let s=at(di,j,i)*0.4, w=0.4;
+    const nb=[[di-1,j,i],[di+1,j,i],[di,j-1,i],[di,j+1,i],[di,j,i-1],[di,j,i+1]];
+    for(const [d,y,x] of nb){ if(d<0||d>=nd) continue; s+=at(d,y,x)*0.1; w+=0.1; }
+    sm[di*nlat*nlon+j*nlon+i]=s/w;
   }
-  const count=scl.length;
-  const base=new THREE.IcosahedronGeometry(1,1);
-  const g=new THREE.InstancedBufferGeometry();
-  g.index=base.index; g.setAttribute('position', base.attributes.position);
-  g.setAttribute('aOffset', new THREE.InstancedBufferAttribute(new Float32Array(off),3));
-  g.setAttribute('aScale',  new THREE.InstancedBufferAttribute(new Float32Array(scl),1));
-  g.setAttribute('aColor',  new THREE.InstancedBufferAttribute(new Float32Array(col),3));
-  g.setAttribute('aDepth',  new THREE.InstancedBufferAttribute(new Float32Array(dep),1));
-  g.setAttribute('aAlpha',  new THREE.InstancedBufferAttribute(new Float32Array(alp),1));
-  g.instanceCount=count;
-  const mat=new THREE.RawShaderMaterial({ transparent:true, depthTest:false, depthWrite:false,
-    blending:THREE.AdditiveBlending, vertexShader:VERT, fragmentShader:FRAG,
-    uniforms:{ uCurDepth:{value:0}, uFocus:{value:0.016}, uOpacity:{value:1} } });
-  const mesh=new THREE.Mesh(g,mat); mesh.frustumCulled=false; mesh.renderOrder=4;
-  if(typeof console!=='undefined') console.log('data bodies:', count, 'blobs');
+  // padded coord lookups (sentinels at poles & depth ends → surfaces close cleanly)
+  const PLAT=[92]; for(let m=0;m<nlat;m++) PLAT.push(90-(m+0.5)/nlat*180); PLAT.push(-92);
+  const PDEP=[depths[0]-80]; for(let m=0;m<nd;m++) PDEP.push(depths[m]); PDEP.push(depths[nd-1]+80);
+  const interp=(arr,f)=>{ const i0=Math.max(0,Math.min(arr.length-2,Math.floor(f))); return arr[i0]+(arr[i0+1]-arr[i0])*(f-i0); };
+  const NX=nlon+1, NY=nlat+2, NZ=nd+2;
+  const toWorld=(fx,fy,fz)=>{
+    const lon=-180+(fx+0.5)/nlon*360;
+    const lat=Math.max(-89.9,Math.min(89.9,interp(PLAT,fy)));
+    const depth=Math.max(8,Math.min(2950,interp(PDEP,fz)));
+    const p=latLonToVec3(lat,lon,depthToUnit(depth));
+    return {x:p.x,y:p.y,z:p.z, d:depth/EARTH_RADIUS};
+  };
+  const fieldFor=(sign)=>(x,y,z)=>{
+    if(z===0||z===NZ-1||y===0||y===NY-1) return -1000;
+    const di=z-1, j=y-1, i=x%nlon;
+    if(agree[(di*nlat+j)*nlon+i]/255 < AGREE_MIN) return -1000;
+    return sign*sm[di*nlat*nlon+j*nlon+i] - THRESH;
+  };
+  const build=(sign,color)=>{
+    const {pos,dep,indices}=surfaceNets(NX,NY,NZ, fieldFor(sign), toWorld);
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+    g.setAttribute('aDepth',   new THREE.Float32BufferAttribute(dep,1));
+    g.setIndex(indices); g.computeVertexNormals();
+    return {mesh:bodyMesh(g,color), tris:indices.length/3};
+  };
+  const fast=build(+1,[0.42,0.62,1.0]);   // cold/fast → blue (slabs)
+  const slow=build(-1,[1.0,0.40,0.32]);   // hot/slow  → red  (LLSVPs, plumes)
+  const group=new THREE.Group(); group.add(fast.mesh, slow.mesh);
+  if(typeof console!=='undefined') console.log('data bodies: isosurfaces', fast.tris+slow.tris, 'tris (fast',fast.tris,'slow',slow.tris,')');
+  const each=(fn)=>{ fn(fast.mesh.material.uniforms); fn(slow.mesh.material.uniforms); };
   return {
-    group:mesh,
-    setCurDepth:(u)=>mat.uniforms.uCurDepth.value=u,
-    setOpacity:(o)=>mat.uniforms.uOpacity.value=o,
+    group,
+    setCurDepth:(u)=>each(uu=>uu.uCurDepth.value=u),
+    setOpacity:(o)=>each(uu=>uu.uOpacity.value=o),
   };
 }
