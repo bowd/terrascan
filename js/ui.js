@@ -1,87 +1,104 @@
-// ui.js — owns every DOM control & readout; talks to main.js through handlers.
-import { DEPTH_STOPS, GEO_LAYERS, EARTH_RADIUS } from './earthModel.js';
+// ui.js — owns the left-rail DOM: depth controls, the scan legend, the readout
+// (with the colour↔baseline bridge), the guided intro, and the tour caption.
+import { GEO_LAYERS, EARTH_RADIUS } from './earthModel.js';
 
 const $ = (s)=>document.querySelector(s);
 const ANOM = {fast:'#6f9bff', slow:'#ff6b5a'};
 
+// curated jump points shown as chips under the depth bar
+const JUMPS = [
+  {d:0,label:'surface'}, {d:150,label:'150'}, {d:410,label:'410'}, {d:660,label:'660'},
+  {d:1500,label:'1500'}, {d:2741,label:'D″'}, {d:2891,label:'CMB'}, {d:5150,label:'ICB'}, {d:6371,label:'centre'},
+];
+
 export function initControls(h){
   const slider=$('#depth-slider');
-
-  // depth slider
   slider.addEventListener('input', ()=>h.onDepth(+slider.value));
 
-  // colour mode
-  document.querySelectorAll('#colormode button').forEach(b=>{
-    b.addEventListener('click',()=>h.onColorMode(b.dataset.mode));
-  });
+  document.querySelectorAll('#colormode button').forEach(b=>
+    b.addEventListener('click', ()=>h.onColorMode(b.dataset.mode)));
 
-  // toggles
   const tog=(id,name)=>$(id).addEventListener('change',e=>h.onToggle(name,e.target.checked));
   tog('#t-scan','scan'); tog('#t-theory','theory'); tog('#t-coast','coast');
   tog('#t-markers','markers'); tog('#t-spin','spin');
 
-  // sliders
   $('#scan-opacity').addEventListener('input',e=>h.onScanOpacity(+e.target.value/100));
   $('#blur-amount').addEventListener('input',e=>h.onBlur(+e.target.value/100));
   $('#gain').addEventListener('input',e=>h.onGain(+e.target.value/100));
 
-  // dive + about
   $('#dive-btn').addEventListener('click',h.onDive);
-  $('#about-btn').addEventListener('click',()=>$('#about').classList.remove('hidden'));
-  $('#about-close').addEventListener('click',()=>$('#about').classList.add('hidden'));
-  $('#about').addEventListener('click',e=>{if(e.target.id==='about')$('#about').classList.add('hidden');});
+  $('#up-btn').addEventListener('click',()=>h.onStep(-100));
+  $('#down-btn').addEventListener('click',()=>h.onStep(100));
 
-  // depth ticks
-  const ticks=$('#depth-ticks');
-  DEPTH_STOPS.forEach(s=>{
-    const el=document.createElement('div');
-    el.className='depth-tick'; el.dataset.d=s.d;
-    el.style.top=(s.d/EARTH_RADIUS*100)+'%';
-    el.innerHTML=`<span class="dot"></span><span class="tk-label">${s.label}</span><span class="tk-km">${s.d}</span>`;
-    el.title=s.blurb;
-    el.addEventListener('click',()=>h.onTickJump(s.d));
-    ticks.appendChild(el);
-  });
+  // guide modal
+  const guide=$('#guide');
+  const openGuide=()=>guide.classList.remove('hidden');
+  const closeGuide=()=>{ guide.classList.add('hidden'); try{localStorage.setItem('terrascan_seen','1');}catch(e){} };
+  $('#guide-btn').addEventListener('click',openGuide);
+  $('#guide-link').addEventListener('click',openGuide);
+  $('#guide-close').addEventListener('click',closeGuide);
+  $('#guide-explore').addEventListener('click',closeGuide);
+  guide.addEventListener('click',e=>{if(e.target===guide)closeGuide();});
+  $('#guide-tour').addEventListener('click',()=>{closeGuide();h.onTour();});
 
-  // depth rail (a coloured cross-section of the whole planet)
+  // tour
+  $('#tour-btn').addEventListener('click',h.onTour);
+  $('#tour-stop').addEventListener('click',h.onTourStop);
+
+  // depth rail (coloured cross-section of the whole planet)
   const rail=$('#depth-rail');
   const stops=GEO_LAYERS.map(L=>{
     const c='#'+L.color.toString(16).padStart(6,'0');
     return `${c} ${(L.d0/EARTH_RADIUS*100).toFixed(1)}%, ${c} ${(L.d1/EARTH_RADIUS*100).toFixed(1)}%`;
   }).join(', ');
-  rail.innerHTML=`<div class="rail-fill" style="background:linear-gradient(180deg,${stops})"></div>
-    <div class="rail-cursor" id="rail-cursor"></div>
-    <div class="rail-cap" style="top:3px">0</div>
-    <div class="rail-cap" style="bottom:3px">6371</div>`;
+  rail.innerHTML=`<div class="rail-fill" style="background:linear-gradient(90deg,${stops})"></div><div class="rail-cursor" id="rail-cursor"></div>`;
   const cursor=$('#rail-cursor');
 
+  // jump chips
+  const ticks=$('#depth-ticks');
+  ticks.innerHTML=JUMPS.map(j=>`<span class="tick" data-d="${j.d}">${j.label}</span>`).join('');
+  ticks.querySelectorAll('.tick').forEach(t=>t.addEventListener('click',()=>h.onTickJump(+t.dataset.d)));
+
+  const covWords=(p)=> p>=55?'richly scanned — trust the colours':p>=32?'decent coverage':p>=16?'patchy — the model is filling in':'almost no scan — you are seeing the model';
+
   return {
-    slider,
     depth(d, layerName){
-      $('#depth-km').textContent=Math.round(d).toLocaleString();
-      $('#depth-layer').textContent=layerName;
+      const r=Math.round(d).toLocaleString();
+      $('#depth-km').textContent=r; $('#sd-km').textContent=r;
+      $('#depth-layer').textContent=layerName; $('#sd-layer').textContent=layerName;
       if(+slider.value!==Math.round(d)) slider.value=Math.round(d);
-      cursor.style.top=(d/EARTH_RADIUS*100)+'%';
-      document.querySelectorAll('.depth-tick').forEach(t=>{
-        t.classList.toggle('on', Math.abs(+t.dataset.d-d)<60);
-      });
+      cursor.style.left=(d/EARTH_RADIUS*100)+'%';
+      ticks.querySelectorAll('.tick').forEach(t=>t.classList.toggle('on',Math.abs(+t.dataset.d-d)<70));
     },
     readout(o){
-      $('#ro-layer').textContent=o.layer; $('#ro-state').textContent=o.state;
-      $('#ro-vp').textContent=o.vp; $('#ro-vs').textContent=o.vs;
+      $('#ro-vs').textContent=o.vs; $('#ro-temp').textContent=o.temp;
       $('#ro-rho').textContent=o.rho; $('#ro-p').textContent=o.p;
-      $('#ro-temp').textContent=o.temp; $('#ro-cov').textContent=o.cov;
+      const p=Math.max(0,Math.min(100,o.covPct));
+      $('#ro-cov').textContent=Math.round(p)+' %';
+      $('#cov-fill').style.width=p+'%';
+      $('#cov-foot').textContent=covWords(p);
     },
     features(list){
       const ul=$('#feature-list');
-      if(!list.length){ul.innerHTML='<li class="muted">average mantle / core — no strong anomalies</li>';return;}
-      ul.innerHTML=list.map(f=>`<li><span class="swatch" style="color:${ANOM[f.anomaly]};background:${ANOM[f.anomaly]}"></span>${f.name}<span class="ftype">${f.type}</span></li>`).join('');
+      if(!list.length){ul.innerHTML='<li class="muted">average mantle/core — no strong anomalies here</li>';return;}
+      ul.innerHTML=list.map(f=>`<li><span class="swatch" style="color:${ANOM[f.anomaly]};background:${ANOM[f.anomaly]}"></span>${f.name}<span class="ftype">${f.anomaly==='fast'?'cold':'hot'} · ${f.type}</span></li>`).join('');
     },
     colorMode(m){
       document.querySelectorAll('#colormode button').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
       $('#legend-dvs').classList.toggle('hidden',m!=='dvs');
       $('#legend-feature').classList.toggle('hidden',m!=='feature');
     },
-    dive(playing){ $('#dive-btn').textContent= playing?'❚❚ pause':'▶ dive'; },
+    dive(playing){ $('#dive-btn').textContent= playing?'❚❚ pause dive':'▶ dive to core'; },
+    guide(show){ guide.classList.toggle('hidden',!show); },
+    tour(playing){
+      $('#tour').classList.toggle('hidden',!playing);
+      $('#tour-btn').textContent= playing?'❚❚ stop tour':'▶ Take the tour';
+      $('#tour-btn').classList.toggle('primary',!playing);
+    },
+    caption(c){
+      $('#tour-step').textContent=`${c.i} / ${c.total}`;
+      $('#tour-title').textContent=c.title;
+      $('#tour-text').textContent=c.text;
+    },
   };
 }

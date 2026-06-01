@@ -35,6 +35,7 @@ controls.enableDamping=true; controls.dampingFactor=0.06;
 controls.minDistance=1.28; controls.maxDistance=7.5;
 controls.autoRotate=true; controls.autoRotateSpeed=0.32;
 controls.rotateSpeed=0.85; controls.zoomSpeed=0.9;
+controls.addEventListener('start', ()=>{ if(state.touring) stopTour(); }); // manual interaction ends the tour
 
 // ---------- scenes ----------
 const theoryScene=new THREE.Scene();
@@ -48,7 +49,7 @@ theoryScene.add(theoryShells);
 const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.92, blur:0.62,
   showScan:true, showTheory:true, showCoast:true, showMarkers:true, spin:true,
-  diving:false, contextLost:false,
+  diving:false, touring:false, contextLost:false,
 };
 
 let scanField, scan, markers=[], markerGroup, ui, coastObj, gratObj;
@@ -75,6 +76,8 @@ async function init(){
 
   ui=initControls(handlers);
   ui.colorMode('dvs');
+  let seen=false; try{ seen=!!localStorage.getItem('terrascan_seen'); }catch(e){}
+  if(!seen) ui.guide(true); // show the intro once; the ⓘ button reopens it
 
   scanField.update(0);
   setDepth(0);
@@ -108,7 +111,7 @@ function makeLabel(text, color){
 
 // ---------- handlers ----------
 const handlers={
-  onDepth:(d)=>{ stopDive(); setDepth(d); },
+  onDepth:(d)=>{ stopTour(); stopDive(); setDepth(d); },
   onColorMode:(m)=>{ state.mode=(m==='feature')?1:0; scan.setMode(state.mode); ui.colorMode(m);
     refreshFeaturePanel(); },
   onToggle:(name,v)=>{
@@ -116,13 +119,16 @@ const handlers={
     else if(name==='theory') state.showTheory=v;
     else if(name==='coast'){ state.showCoast=v; coastObj&&(coastObj.visible=v); gratObj&&(gratObj.visible=v); }
     else if(name==='markers'){ state.showMarkers=v; markerGroup.visible=v; }
-    else if(name==='spin'){ state.spin=v; controls.autoRotate=v; }
+    else if(name==='spin'){ state.spin=v; if(!state.touring) controls.autoRotate=v; }
   },
   onScanOpacity:(v)=>{ state.scanOpacity=v; scan.setOpacity(v); },
   onBlur:(v)=>{ state.blur=v; },
   onGain:(v)=>{ state.gain=v; scan.setGain(v); refreshFeaturePanel(); },
-  onDive:()=>{ state.diving?stopDive():startDive(); },
-  onTickJump:(d)=>{ stopDive(); animateTo(d); },
+  onDive:()=>{ stopTour(); state.diving?stopDive():startDive(); },
+  onTickJump:(d)=>{ stopTour(); stopDive(); animateTo(d); },
+  onStep:(dz)=>{ stopTour(); stopDive(); setDepth(state.depth+dz); },
+  onTour:()=>{ state.touring?stopTour():startTour(); },
+  onTourStop:()=>stopTour(),
 };
 
 // ---------- depth ----------
@@ -133,15 +139,13 @@ function setDepth(d){
   scan.setRadius(depthToUnit(d));
   // sample a hair below so velocities agree with the (deeper) layer label at a discontinuity
   const gl=geoLayerAt(d), p=premAt(Math.min(d+0.5, EARTH_RADIUS));
-  ui.depth(d, gl.name+' · '+gl.state);
+  ui.depth(d, gl.name+(gl.state==='liquid'?' · liquid':''));
   lastReadout={
-    layer:gl.name, state:gl.state,
-    vp:p.vp.toFixed(2)+' km/s',
-    vs:(gl.state==='liquid'?'0 — no S':p.vs.toFixed(2)+' km/s'),
+    vs:(gl.state==='liquid'?'0 (liquid)':p.vs.toFixed(2)+' km/s'),
+    temp:'≈'+(Math.round(p.temp/10)*10).toLocaleString()+' K',
     rho:p.rho.toFixed(2)+' g/cm³',
     p:(p.pressure>=10?p.pressure.toFixed(0):p.pressure.toFixed(1))+' GPa',
-    temp:'≈ '+(Math.round(p.temp/10)*10).toLocaleString()+' K',
-    cov:Math.round(scanField.coverageMean*100)+' %',
+    covPct:scanField.coverageMean*100,
   };
   ui.readout(lastReadout);
   refreshFeaturePanel();
@@ -178,9 +182,35 @@ function spawnMarker(f){
 
 // ---------- dive ----------
 let diveTarget=null;
-function startDive(){ state.diving=true; ui.dive(true); if(state.depth>=EARTH_RADIUS-5) setDepth(0); }
+function startDive(){ stopTour(); state.diving=true; ui.dive(true); if(state.depth>=EARTH_RADIUS-5) setDepth(0); }
 function stopDive(){ if(state.diving){ state.diving=false; ui.dive(false);} diveTarget=null; }
 function animateTo(d){ diveTarget=d; }
+
+// ---------- guided tour ----------
+const TOUR=[
+  {d:0,    lat:58, lon:-100, title:'The surface you know',           text:'Every map you have seen stops here. The blue patches are cratons — ancient, cold continental keels. Now we go straight down.'},
+  {d:150,  lat:62, lon:100,  title:'Lithosphere → asthenosphere',    text:'Near 80 km the rigid plates give way to mantle soft enough to slowly flow. Cold cratonic roots still read blue and fast.'},
+  {d:660,  lat:-22,lon:-178, title:'Slabs stalling at 660 km',        text:'Old sea floor sinks in cold blue sheets around the Pacific rim. Many slabs pile up at this boundary; some punch through.'},
+  {d:1800, lat:6,  lon:150,  title:'The deep mantle',                 text:'Cold slab graveyards keep sinking. Watch the colour thin out — where it fades, you are seeing the model guess, not real data.'},
+  {d:2800, lat:-8, lon:18,   title:'Two giant hot piles — the LLSVPs',text:'Just above the core sit two continent-sized blobs of hot, slow rock: one under Africa, one under the Pacific. Plumes rise off their edges.'},
+  {d:2891, lat:-8, lon:18,   title:'The core–mantle boundary',        text:'Rock meets liquid iron — a ~1000° cliff. Shear waves stop dead here, because the outer core is liquid.'},
+  {d:5800, lat:0,  lon:30,   title:'Inner core — where we go blind',  text:'We have almost no lateral scan of the core, so the sharp layer fades and the blurry model takes over. That hand-off is the whole point.'},
+];
+let tourTimer=null, tourCamPos=null;
+function startTour(){ stopDive(); state.touring=true; controls.autoRotate=false; ui.tour(true); ui.guide(false); tourChapter(0); }
+function stopTour(){
+  if(!state.touring) return;
+  state.touring=false; if(tourTimer){ clearTimeout(tourTimer); tourTimer=null; }
+  tourCamPos=null; ui.tour(false); controls.autoRotate=state.spin;
+}
+function tourChapter(i){
+  const c=TOUR[i];
+  ui.caption({i:i+1, total:TOUR.length, title:c.title, text:c.text});
+  animateTo(c.d);
+  tourCamPos=latLonToVec3(c.lat, c.lon, 2.7);
+  if(tourTimer) clearTimeout(tourTimer);
+  tourTimer=setTimeout(()=>{ if(i+1<TOUR.length) tourChapter(i+1); else stopTour(); }, 8500);
+}
 
 // ---------- loop ----------
 const clock=new THREE.Clock();
@@ -204,8 +234,9 @@ function animate(){
   const now=performance.now();
   if(Math.abs(pendingDepth-builtDepth)>=1 && now-lastBuild>35){
     scanField.update(pendingDepth); builtDepth=pendingDepth; lastBuild=now;
-    ui.readout({...lastReadout, cov:Math.round(scanField.coverageMean*100)+' %'});
+    ui.readout({...lastReadout, covPct:scanField.coverageMean*100});
   }
+  if(state.touring && tourCamPos) camera.position.lerp(tourCamPos, Math.min(1, dt*1.7));
 
   theoryShells.userData.tick(t);
   controls.update();
@@ -242,8 +273,8 @@ function onResize(){
   pipeline.setSize(w*PIX, h*PIX, PIX);
 }
 function onKey(e){
-  if(e.key==='ArrowDown'){ stopDive(); setDepth(state.depth+Math.max(20,EARTH_RADIUS*0.01)); e.preventDefault(); }
-  else if(e.key==='ArrowUp'){ stopDive(); setDepth(state.depth-Math.max(20,EARTH_RADIUS*0.01)); e.preventDefault(); }
+  if(e.key==='ArrowDown'){ stopTour(); stopDive(); setDepth(state.depth+Math.max(20,EARTH_RADIUS*0.01)); e.preventDefault(); }
+  else if(e.key==='ArrowUp'){ stopTour(); stopDive(); setDepth(state.depth-Math.max(20,EARTH_RADIUS*0.01)); e.preventDefault(); }
   else if(e.code==='Space'){ handlers.onDive(); e.preventDefault(); }
 }
 function fail(msg){
