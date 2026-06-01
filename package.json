@@ -11,5 +11,8 @@
   "license": "ISC",
   "devDependencies": {
     "playwright": "^1.49.0"
+  },
+  "dependencies": {
+    "netcdfjs": "^4.0.0"
   }
 }

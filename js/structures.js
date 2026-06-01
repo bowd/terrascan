@@ -182,6 +182,7 @@ export function makeStructures(){
     setCurDepth:(u)=>mat.uniforms.uCurDepth.value=u,
     setMode:(m)=>mat.uniforms.uMode.value=m,
     setOpacity:(o)=>mat.uniforms.uOpacity.value=o,
+    setFocusBand:(v)=>mat.uniforms.uFocus.value=v,
     setHover:(f)=>{ mat.uniforms.uHoverFeature.value = f ? info.get(f).index : -1; },
     focus:(f)=>{ if(!f){ mat.uniforms.uFocusing.value=0; } else { mat.uniforms.uFocusing.value=1; mat.uniforms.uSelFeature.value=info.get(f).index; } },
     infoFor:(f)=>info.get(f),

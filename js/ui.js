@@ -24,10 +24,8 @@ export function initControls(h){
   tog('#t-relief','relief'); tog('#t-coast','coast'); tog('#t-borders','borders');
   tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-spin','spin');
 
-  $('#scan-opacity').addEventListener('input',e=>h.onScanOpacity(+e.target.value/100));
-  $('#surface-opacity').addEventListener('input',e=>h.onReliefOpacity(+e.target.value/100));
-  $('#blur-amount').addEventListener('input',e=>h.onBlur(+e.target.value/100));
-  $('#gain').addEventListener('input',e=>h.onGain(+e.target.value/100));
+  $('#focus-blend').addEventListener('input',e=>h.onFocus(+e.target.value/100));
+  document.querySelectorAll('.dial').forEach(s=>s.addEventListener('input',()=>h.onDial(s.dataset.dial, +s.value/100)));
 
   $('#dive-btn').addEventListener('click',h.onDive);
   $('#up-btn').addEventListener('click',()=>h.onStep(-100));
@@ -97,6 +95,7 @@ export function initControls(h){
     },
     dataBody(html){ $('#data-body').innerHTML=html; },
     know(text){ $('#know').textContent=text; },
+    reflectDials(norms){ document.querySelectorAll('.dial').forEach(s=>{ const v=norms[s.dataset.dial]; if(v!=null) s.value=Math.round(Math.max(0,Math.min(1,v))*100); }); },
     tip(f, x, y){
       const el=$('#tip');
       if(!f){ el.classList.add('hidden'); return; }

@@ -74,12 +74,23 @@
         <label class="toggle"><input type="checkbox" id="t-foot" /><span>Footprints</span></label>
         <label class="toggle"><input type="checkbox" id="t-spin" checked /><span>Spin</span></label>
       </div>
+      <div class="ctl master"><span>focus · surface ⟷ interior</span><input id="focus-blend" class="slider" type="range" min="0" max="100" value="40" /></div>
       <details class="advanced">
-        <summary>fine tuning</summary>
-        <div class="ctl"><span>slice strength</span><input id="scan-opacity" class="slider" type="range" min="0" max="100" value="58" /></div>
-        <div class="ctl"><span>surface opacity</span><input id="surface-opacity" class="slider" type="range" min="0" max="100" value="72" /></div>
-        <div class="ctl"><span>anomaly gain</span><input id="gain" class="slider" type="range" min="40" max="160" value="100" /></div>
-        <div class="ctl"><span>model haze</span><input id="blur-amount" class="slider" type="range" min="0" max="100" value="62" /></div>
+        <summary>raw dials</summary>
+        <div class="dial-grp">surface</div>
+        <div class="ctl"><span>relief opacity</span><input class="slider dial" data-dial="reliefOpacity" type="range" min="0" max="100" value="72" /></div>
+        <div class="ctl"><span>relief brightness</span><input class="slider dial" data-dial="reliefBright" type="range" min="0" max="100" value="43" /></div>
+        <div class="ctl"><span>coastlines</span><input class="slider dial" data-dial="coastOpacity" type="range" min="0" max="100" value="47" /></div>
+        <div class="dial-grp">scan slice</div>
+        <div class="ctl"><span>slice strength</span><input class="slider dial" data-dial="scanStrength" type="range" min="0" max="100" value="58" /></div>
+        <div class="ctl"><span>anomaly gain</span><input class="slider dial" data-dial="scanGain" type="range" min="0" max="100" value="43" /></div>
+        <div class="ctl"><span>coverage floor</span><input class="slider dial" data-dial="scanFloor" type="range" min="0" max="100" value="32" /></div>
+        <div class="dial-grp">model · subsurface</div>
+        <div class="ctl"><span>model intensity</span><input class="slider dial" data-dial="modelGain" type="range" min="0" max="100" value="50" /></div>
+        <div class="ctl"><span>model haze</span><input class="slider dial" data-dial="modelHaze" type="range" min="0" max="100" value="62" /></div>
+        <div class="dial-grp">3-D bodies</div>
+        <div class="ctl"><span>body opacity</span><input class="slider dial" data-dial="bodyOpacity" type="range" min="0" max="100" value="75" /></div>
+        <div class="ctl"><span>focus depth-of-field</span><input class="slider dial" data-dial="focusBand" type="range" min="0" max="100" value="20" /></div>
       </details>
       <p class="rail-foot">Radial values: real PREM. Lateral features: a faithful synthesis of published tomography. <button id="guide-link" class="linkish">full explainer →</button></p>
     </section>

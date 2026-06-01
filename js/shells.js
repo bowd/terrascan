@@ -144,5 +144,6 @@ export function makeScanShell(scanTexture){
     setMode:(m)=>mat.uniforms.uMode.value=m,
     setGain:(g)=>mat.uniforms.uGain.value=g,
     setInfer:(v)=>mat.uniforms.uInferred.value=v,
+    setCovFloor:(v)=>mat.uniforms.uCovFloor.value=v,
   };
 }

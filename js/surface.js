@@ -17,7 +17,7 @@ export function makeReliefEarth(){
   const geo=new THREE.SphereGeometry(1.0, 160, 100);
   const mat=new THREE.ShaderMaterial({
     transparent:true, depthTest:false, depthWrite:false, side:THREE.FrontSide,
-    uniforms:{ uColor:{value:colorTex}, uTopo:{value:topoTex}, uOpacity:{value:0.6} },
+    uniforms:{ uColor:{value:colorTex}, uTopo:{value:topoTex}, uOpacity:{value:0.6}, uBright:{value:1.12} },
     vertexShader:`
       varying vec3 vP; varying vec3 vN; varying vec3 vV;
       void main(){
@@ -29,7 +29,7 @@ export function makeReliefEarth(){
     fragmentShader:`
       precision highp float;
       varying vec3 vP; varying vec3 vN; varying vec3 vV;
-      uniform sampler2D uColor, uTopo; uniform float uOpacity;
+      uniform sampler2D uColor, uTopo; uniform float uOpacity, uBright;
       const float PI=3.141592653589793;
       void main(){
         vec3 dir=normalize(vP);
@@ -43,7 +43,7 @@ export function makeReliefEarth(){
         float hy=texture2D(uTopo,uv+vec2(0.0,e)).r;
         vec3 n=normalize(vec3((h-hx)*9.0,(h-hy)*9.0,1.0));
         float shade=clamp(dot(n,normalize(vec3(-0.55,0.6,0.85))),0.0,1.0);
-        col=col*(0.62+0.7*shade)*1.12;
+        col=col*(0.62+0.7*shade)*uBright;
         col+=vec3(0.05,0.09,0.16)*pow(1.0-clamp(dot(normalize(vN),normalize(vV)),0.0,1.0),3.0); // faint atmosphere rim
         float ndv=clamp(dot(normalize(vN),normalize(vV)),0.0,1.0);
         gl_FragColor=vec4(col, uOpacity*(0.30+0.70*ndv)); // softer at grazing edges
@@ -51,5 +51,5 @@ export function makeReliefEarth(){
   });
   const mesh=new THREE.Mesh(geo,mat);
   mesh.renderOrder=1;
-  return { mesh, setOpacity:(o)=>mat.uniforms.uOpacity.value=o };
+  return { mesh, setOpacity:(o)=>mat.uniforms.uOpacity.value=o, setBright:(b)=>mat.uniforms.uBright.value=b };
 }

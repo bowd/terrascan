@@ -56,8 +56,39 @@ const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
   showStruct:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
   showBorders:false, showMarkers:true, showFoot:false, spin:true,
-  diving:false, touring:false, contextLost:false, focused:null,
+  diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4,
 };
+
+// ---------- tunable dials (every magic number, live) ----------
+const DIAL_RANGE={ reliefOpacity:[0,1], reliefBright:[0.6,1.8], coastOpacity:[0,0.9],
+  scanStrength:[0,1], scanGain:[0.4,1.8], scanFloor:[0,0.5],
+  modelGain:[0,2], modelHaze:[0,1], bodyOpacity:[0,1.2], focusBand:[0.008,0.12] };
+const dials={ reliefOpacity:0.72, reliefBright:1.12, coastOpacity:0.42,
+  scanStrength:0.58, scanGain:1.0, scanFloor:0.16,
+  modelGain:1.0, modelHaze:0.62, bodyOpacity:0.9, focusBand:0.03 };
+function applyDial(name,v){ dials[name]=v;
+  if(name==='reliefOpacity') relief&&relief.setOpacity(v);
+  else if(name==='reliefBright') relief&&relief.setBright(v);
+  else if(name==='coastOpacity'){ coastObj&&(coastObj.material.opacity=v); bordersObj&&(bordersObj.material.opacity=Math.min(0.9,v*1.15)); }
+  else if(name==='scanStrength') scan&&scan.setOpacity(v);
+  else if(name==='scanGain') scan&&scan.setGain(v);
+  else if(name==='scanFloor') scan&&scan.setCovFloor(v);
+  else if(name==='bodyOpacity') structures&&structures.setOpacity(v);
+  else if(name==='focusBand') structures&&structures.setFocusBand(v);
+  // modelGain & modelHaze are read live in the render loop
+}
+function dialNorms(){ const o={}; for(const k in dials){ const r=DIAL_RANGE[k]; o[k]=(dials[k]-r[0])/(r[1]-r[0]); } return o; }
+// the "smart" rack: one control shifts emphasis surface -> interior across many dials
+function applyFocus(t){
+  state.focusBlend=t;
+  applyDial('reliefOpacity', 0.88*(1-t)+0.05);   // surface skin fades as you go in
+  applyDial('coastOpacity', 0.55*(1-0.7*t)+0.03);
+  applyDial('scanStrength', 0.40+0.28*t);
+  applyDial('modelGain', 0.5+1.1*t);             // the fuzzy subsurface brightens
+  applyDial('modelHaze', 0.35+0.5*t);            // ...and gets hazier/fuzzier
+  applyDial('bodyOpacity', 0.65+0.4*t);
+  ui&&ui.reflectDials(dialNorms());
+}
 
 let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj;
 let earthWire, hovered=null, glideCam=null, glideTarget=null, savedCam=null, savedTarget=null;
@@ -75,7 +106,7 @@ async function init(){
 
   scanField=makeScanField(landMask);
   scan=makeScanShell(scanField.texture);
-  scan.setOpacity(state.scanOpacity);
+  scan.setOpacity(dials.scanStrength);
   scanScene.add(scan.mesh);
 
   structures=makeStructures();
@@ -84,7 +115,7 @@ async function init(){
   structures.footGroup.visible=state.showFoot; scanScene.add(structures.footGroup);
 
   relief=makeReliefEarth();
-  relief.setOpacity(state.reliefOpacity); relief.mesh.visible=state.showRelief;
+  relief.setOpacity(dials.reliefOpacity); relief.setBright(dials.reliefBright); relief.mesh.visible=state.showRelief;
   scanScene.add(relief.mesh);
 
   // faint globe outline shown only while a feature is "extracted", for context
@@ -104,6 +135,7 @@ async function init(){
   ui=initControls(handlers);
   ui.colorMode('dvs');
   ui.dataBody(dataSourcesHTML(DATA_GROUPS));
+  ui.reflectDials(dialNorms());
   let seen=false; try{ seen=!!localStorage.getItem('terrascan_seen'); }catch(e){}
   if(!seen) ui.guide(true); // show the intro once; the ⓘ button reopens it
 
@@ -155,10 +187,8 @@ const handlers={
     else if(name==='markers'){ state.showMarkers=v; markerGroup.visible=v; }
     else if(name==='spin'){ state.spin=v; if(!state.touring) controls.autoRotate=v; }
   },
-  onScanOpacity:(v)=>{ state.scanOpacity=v; scan.setOpacity(v); },
-  onReliefOpacity:(v)=>{ state.reliefOpacity=v; relief.setOpacity(v); },
-  onBlur:(v)=>{ state.blur=v; },
-  onGain:(v)=>{ state.gain=v; scan.setGain(v); refreshFeaturePanel(); },
+  onDial:(name,t)=>{ const r=DIAL_RANGE[name]; if(r) applyDial(name, r[0]+(r[1]-r[0])*t); },
+  onFocus:(t)=>applyFocus(t),
   onDive:()=>{ stopTour(); state.diving?stopDive():startDive(); },
   onTickJump:(d)=>{ stopTour(); stopDive(); animateTo(d); },
   onStep:(dz)=>{ stopTour(); stopDive(); setDepth(state.depth+dz); },
@@ -295,7 +325,7 @@ function exitFocus(){
   document.body.classList.remove('focusing');
   structures.focus(null); structures.setFootHover(null); structures.footGroup.visible=state.showFoot;
   earthWire.visible=false; ui.focusPanel(null);
-  scan.mesh.visible=state.showScan; markerGroup.visible=state.showMarkers; relief.setOpacity(state.reliefOpacity);
+  scan.mesh.visible=state.showScan; markerGroup.visible=state.showMarkers; relief.setOpacity(dials.reliefOpacity);
   glideTarget=new THREE.Vector3(0,0,0);                 // the globe pivot is always the origin
   glideCam=savedCam?savedCam.clone():new THREE.Vector3(0.2,0.9,3.0);
   state.focused=null; controls.autoRotate=state.spin;
@@ -341,8 +371,8 @@ function animate(){
   const fillIn=1-THREE.MathUtils.smoothstep(scanField?scanField.coverageMean:0.4, 0.05, 0.30);
   pipeline.render(theoryScene, scanScene, camera, {
     showTheory:state.showTheory, showScan:true,
-    blur:state.blur,
-    theoryIntensity:(state.showScan ? 0.32+fillIn*0.5 : 0.74)+state.blur*0.12,
+    blur:dials.modelHaze,
+    theoryIntensity:((state.showScan ? 0.32+fillIn*0.5 : 0.74)+dials.modelHaze*0.12)*dials.modelGain,
   });
 }
 
