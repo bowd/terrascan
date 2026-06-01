@@ -521,11 +521,9 @@ function enterFocus(f){
   document.body.classList.add('focusing');
   state.focused=f; structures.focus(f); structures.setHover(null);
   structures.footGroup.visible=true; structures.setFootSolo(f);   // ONLY this body's footprint
-  earthWire.visible=true; controls.autoRotate=false;
-  // isolate the body: hide everything else (slice, data bodies, coastlines, graticule, markers)
-  scan.mesh.visible=false; markerGroup.visible=false; relief.setOpacity(0.10);
-  if(dataBodies) dataBodies.group.visible=false;
-  coastObj&&(coastObj.visible=false); gratObj&&(gratObj.visible=false);
+  controls.autoRotate=false;
+  // keep all the data layers visible for context — just dim the OTHER features (structures.focus)
+  // and glide the camera onto this one. (No layer hiding, so nothing to "get back" on exit.)
   savedCam=camera.position.clone(); savedTarget=controls.target.clone();
   const c=inf.center, dist=Math.max(0.55, Math.min(3.2, inf.radius*5.0));
   const dir=camera.position.clone().sub(controls.target).normalize();
@@ -536,10 +534,8 @@ function exitFocus(){
   if(!state.focused) return;
   document.body.classList.remove('focusing');
   structures.focus(null); structures.setFootSolo(null); structures.footGroup.visible=state.showFoot;
-  earthWire.visible=false; ui.focusPanel(null); markerGroup.visible=state.showMarkers;
+  ui.focusPanel(null);
   state.focused=null;
-  applyPeel();             // restore peel render-orders + every layer's visibility
-  setDepth(state.depth);   // restore the cut, depth band, body depth & relief opacity at this depth
   glideTarget=new THREE.Vector3(0,0,0);                 // the globe pivot is always the origin
   glideCam=savedCam?savedCam.clone():new THREE.Vector3(0.2,0.9,3.0);
   controls.autoRotate=state.spin;
