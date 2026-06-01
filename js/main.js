@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import {
-  EARTH_RADIUS, premAt, geoLayerAt, depthToUnit,
+  EARTH_RADIUS, premAt, geoLayerAt, depthToUnit, tempUncertainty,
 } from './earthModel.js';
 import { makeScanField, activeFeatures, dominantFeatures } from './tomography.js';
 import { loadGeo, rasterizeLand, buildCoastlines, buildGraticule, latLonToVec3 } from './geo.js';
@@ -165,6 +165,7 @@ function setDepth(d){
   lastReadout={
     vs:(gl.state==='liquid'?'0 (liquid)':p.vs.toFixed(2)+' km/s'),
     temp:'≈ '+(Math.round(p.temp/10)*10).toLocaleString()+' K · '+(Math.round((p.temp-273.15)/10)*10).toLocaleString()+' °C',
+    tempNote:'model estimate · ±'+tempUncertainty(d)+' K · not measured',
     rho:p.rho.toFixed(2)+' g/cm³',
     p:(p.pressure>=10?p.pressure.toFixed(0):p.pressure.toFixed(1))+' GPa',
     covPct:scanField.coverageMean*100,

@@ -50,7 +50,7 @@
       </div>
       <div class="depth-big"><span id="depth-km">0</span><span class="depth-unit">km</span></div>
       <div id="depth-layer" class="depth-layer">Surface · the crust</div>
-      <input id="depth-slider" class="slider" type="range" min="0" max="6371" value="0" step="1" />
+      <input id="depth-slider" class="slider" type="range" min="0" max="1000" value="0" step="1" />
       <div id="depth-rail" class="depth-rail"></div>
       <div id="depth-ticks" class="depth-ticks"></div>
       <div class="depth-controls">
@@ -105,7 +105,13 @@
       <ul id="feature-list" class="feature-list"><li class="muted">—</li></ul>
 
       <div class="sub model-sub">Conditions at this depth</div>
-      <div class="temp-big"><span id="ro-temp">—</span><span class="temp-cap">temperature down here</span></div>
+      <div class="temp-big">
+        <span id="ro-temp">—</span>
+        <span class="temp-meta">
+          <span class="temp-cap" id="temp-cap">temperature</span>
+          <span class="info" tabindex="0" data-tip="We never measure temperature at depth — it is inferred. A near-adiabatic geotherm through the convecting mantle, with steep thermal boundary layers at the top (lithosphere) and bottom (D″ / core), pinned by surface heat flow, the melting points of minerals at pressure, and the geodynamo. Uncertainty is large (±hundreds of K), worst in the boundary layers & core, and it varies laterally — hotter under ridges & plumes, colder under slabs & cratons.">ⓘ</span>
+        </span>
+      </div>
       <div class="readout3">
         <div class="ro"><span class="ro-v" id="ro-p">—</span><span class="ro-k">pressure</span></div>
         <div class="ro"><span class="ro-v" id="ro-rho">—</span><span class="ro-k">density</span></div>

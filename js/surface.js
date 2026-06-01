@@ -6,10 +6,13 @@ import * as THREE from 'three';
 
 export function makeReliefEarth(){
   const loader=new THREE.TextureLoader();
+  // flipY=false so v=0 is the NORTH row, matching the hand-built scan DataTexture
+  // (and therefore the coastlines/borders). Image textures default to flipY=true,
+  // which would mirror the relief north<->south against the outlines.
   const colorTex=loader.load('./assets/earth-blue-marble.jpg');
-  colorTex.colorSpace=THREE.SRGBColorSpace; colorTex.wrapS=THREE.RepeatWrapping;
+  colorTex.colorSpace=THREE.SRGBColorSpace; colorTex.wrapS=THREE.RepeatWrapping; colorTex.flipY=false;
   const topoTex=loader.load('./assets/earth-topology.png');
-  topoTex.colorSpace=THREE.NoColorSpace; topoTex.wrapS=THREE.RepeatWrapping;
+  topoTex.colorSpace=THREE.NoColorSpace; topoTex.wrapS=THREE.RepeatWrapping; topoTex.flipY=false;
 
   const geo=new THREE.SphereGeometry(1.0, 160, 100);
   const mat=new THREE.ShaderMaterial({

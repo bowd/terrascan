@@ -18,7 +18,10 @@ const gl=await page.evaluate(()=>{const c=document.createElement('canvas');const
 console.log('WEBGL:', gl);
 await page.waitForTimeout(4200);
 
-const setDepth=async(d)=>{ await page.evaluate(d=>{const s=document.querySelector('#depth-slider'); s.value=d; s.dispatchEvent(new Event('input',{bubbles:true}));}, d); };
+const setDepth=async(d)=>{ await page.evaluate(d=>{
+  const t=Math.pow(Math.max(0,Math.min(1,d/6371)),1/2.2);   // non-linear depth axis
+  const s=document.querySelector('#depth-slider'); s.value=Math.round(t*1000); s.dispatchEvent(new Event('input',{bubbles:true}));
+}, d); };
 const click=async(sel)=>{ await page.click(sel); };
 const setChk=async(sel,on)=>{ await page.evaluate(([sel,on])=>{const c=document.querySelector(sel); if(c.checked!==on){c.checked=on; c.dispatchEvent(new Event('change',{bubbles:true}));}}, [sel,on]); };
 
@@ -29,6 +32,8 @@ await setChk('#t-spin', false);
 await page.waitForTimeout(700);
 
 await page.screenshot({path:'shots/01-surface.png'});
+await setDepth(80); await page.waitForTimeout(1200); await page.screenshot({path:'shots/15-shallow.png'});
+console.log('temp@80:', await page.evaluate(()=>document.querySelector('#ro-temp').textContent+' | '+document.querySelector('#temp-cap').textContent));
 await setDepth(2891); await page.waitForTimeout(1400); await page.screenshot({path:'shots/02-cmb.png'});
 console.log('CMB readout:', await page.evaluate(()=>({layer:document.querySelector('#depth-layer').textContent, vs:document.querySelector('#ro-vs').textContent, rho:document.querySelector('#ro-rho').textContent, p:document.querySelector('#ro-p').textContent})));
 await setDepth(5800); await page.waitForTimeout(1400); await page.screenshot({path:'shots/03-innercore.png'});
@@ -52,6 +57,11 @@ console.log('temp@0:', await page.evaluate(()=>document.querySelector('#ro-temp'
 // relief alignment check (structures + model off)
 await setChk('#t-struct', false); await setChk('#t-theory', false); await page.waitForTimeout(800);
 await page.screenshot({path:'shots/12-relief-only.png'});
+// drag-rotate to the western hemisphere (Americas/Pacific) for a second alignment check
+const cx=344+(1500-344)/2, cy=460;
+await page.mouse.move(cx,cy); await page.mouse.down();
+await page.mouse.move(cx-430,cy,{steps:24}); await page.mouse.up();
+await page.waitForTimeout(900); await page.screenshot({path:'shots/14-relief-west.png'});
 await setChk('#t-struct', true); await setChk('#t-theory', true); await setChk('#t-borders', false);
 
 // tour

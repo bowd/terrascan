@@ -1,6 +1,6 @@
 // ui.js — owns the left-rail DOM: depth controls, the scan legend, the readout
 // (with the colour↔baseline bridge), the guided intro, and the tour caption.
-import { GEO_LAYERS, EARTH_RADIUS, DEPTH_STOPS } from './earthModel.js';
+import { GEO_LAYERS, EARTH_RADIUS, DEPTH_STOPS, sliderToDepth, depthToSlider } from './earthModel.js';
 
 const $ = (s)=>document.querySelector(s);
 const ANOM = {fast:'#6f9bff', slow:'#ff6b5a'};
@@ -12,8 +12,8 @@ const JUMPS = [
 ];
 
 export function initControls(h){
-  const slider=$('#depth-slider');
-  slider.addEventListener('input', ()=>h.onDepth(+slider.value));
+  const slider=$('#depth-slider'); // 0..1000 on a non-linear axis (shallow expanded)
+  slider.addEventListener('input', ()=>h.onDepth(sliderToDepth(+slider.value/1000)));
 
   document.querySelectorAll('#colormode button').forEach(b=>
     b.addEventListener('click', ()=>h.onColorMode(b.dataset.mode)));
@@ -57,7 +57,7 @@ export function initControls(h){
   const rail=$('#depth-rail');
   const stops=GEO_LAYERS.map(L=>{
     const c='#'+L.color.toString(16).padStart(6,'0');
-    return `${c} ${(L.d0/EARTH_RADIUS*100).toFixed(1)}%, ${c} ${(L.d1/EARTH_RADIUS*100).toFixed(1)}%`;
+    return `${c} ${(depthToSlider(L.d0)*100).toFixed(1)}%, ${c} ${(depthToSlider(L.d1)*100).toFixed(1)}%`;
   }).join(', ');
   rail.innerHTML=`<div class="rail-fill" style="background:linear-gradient(90deg,${stops})"></div><div class="rail-cursor" id="rail-cursor"></div>`;
   const cursor=$('#rail-cursor');
@@ -74,8 +74,9 @@ export function initControls(h){
       const r=Math.round(d).toLocaleString();
       $('#depth-km').textContent=r; $('#sd-km').textContent=r;
       $('#depth-layer').textContent=layerName; $('#sd-layer').textContent=layerName;
-      if(+slider.value!==Math.round(d)) slider.value=Math.round(d);
-      cursor.style.left=(d/EARTH_RADIUS*100)+'%';
+      const sv=Math.round(depthToSlider(d)*1000);
+      if(+slider.value!==sv) slider.value=sv;
+      cursor.style.left=(depthToSlider(d)*100)+'%';
       ticks.querySelectorAll('.tick').forEach(t=>t.classList.toggle('on',Math.abs(+t.dataset.d-d)<70));
       const stop=DEPTH_STOPS.reduce((a,b)=>Math.abs(b.d-d)<Math.abs(a.d-d)?b:a);
       $('#depth-note').textContent='“'+stop.label+'” — '+stop.blurb;
@@ -85,6 +86,7 @@ export function initControls(h){
     readout(o){
       $('#ro-vs').textContent=o.vs; $('#ro-temp').textContent=o.temp;
       $('#ro-rho').textContent=o.rho; $('#ro-p').textContent=o.p;
+      if(o.tempNote) $('#temp-cap').textContent=o.tempNote;
       const p=Math.max(0,Math.min(100,o.covPct));
       $('#ro-cov').textContent=Math.round(p)+' %';
       $('#cov-fill').style.width=p+'%';

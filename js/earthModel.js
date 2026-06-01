@@ -122,3 +122,16 @@ export const DISCONTINUITIES = [
 export const depthToUnit  = (d)=> (EARTH_RADIUS - d)/EARTH_RADIUS;
 export const kmToUnit     = (km)=> km/EARTH_RADIUS;
 export const unitToDepth  = (u)=> EARTH_RADIUS*(1-u);
+
+// ---- non-linear depth axis: t in [0,1] -> depth, expanding the shallow zone ----
+// so the crust/lithosphere/asthenosphere get a usable share of the slider.
+const DEXP = 2.2;
+export const sliderToDepth = (t)=> EARTH_RADIUS*Math.pow(Math.max(0,Math.min(1,t)), DEXP);
+export const depthToSlider = (d)=> Math.pow(Math.max(0,Math.min(1,d/EARTH_RADIUS)), 1/DEXP);
+
+// rough temperature uncertainty (K) — temperature is modelled, never measured;
+// the error is largest in the thermal boundary layers (lithosphere, D″) and the core.
+export function tempUncertainty(d){
+  if(d<100) return 150; if(d<660) return 120; if(d<2400) return 150;
+  if(d<2891) return 400; if(d<5150) return 500; return 600;
+}
