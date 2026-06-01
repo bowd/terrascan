@@ -81,7 +81,7 @@ const DIAL_RANGE={ reliefOpacity:[0,1], reliefBright:[0.6,1.8], coastOpacity:[0,
   scanStrength:[0,1], scanGain:[0.4,1.8], scanFloor:[0,0.5],
   modelGain:[0,2], modelHaze:[0,1], bodyOpacity:[0,1.2], focusBand:[0.008,0.12] };
 const dials={ reliefOpacity:0.88, reliefBright:1.12, coastOpacity:0.42,
-  scanStrength:0.58, scanGain:1.0, scanFloor:0.16,
+  scanStrength:0.8, scanGain:1.2, scanFloor:0.16,
   modelGain:1.0, modelHaze:0.62, bodyOpacity:0.9, focusBand:0.03 };
 function applyDial(name,v){ dials[name]=v;
   if(name==='reliefOpacity') setReliefOpacity();
@@ -100,7 +100,7 @@ function applyFocus(t){
   state.focusBlend=t;
   applyDial('reliefOpacity', 0.88*(1-t)+0.05);   // surface skin fades as you go in
   applyDial('coastOpacity', 0.55*(1-0.7*t)+0.03);
-  applyDial('scanStrength', 0.40+0.28*t);
+  applyDial('scanStrength', 0.62+0.3*t);
   applyDial('modelGain', 0.5+1.1*t);             // the fuzzy subsurface brightens
   applyDial('modelHaze', 0.35+0.5*t);            // ...and gets hazier/fuzzier
   applyDial('bodyOpacity', 0.65+0.4*t);

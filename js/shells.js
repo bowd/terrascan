@@ -112,8 +112,8 @@ export function makeScanShell(scanTexture){
         int id=int(floor(d.b*255.0/40.0+0.5));
         float strength=clamp(abs(signed),0.0,1.0);
         vec3 color = uMode<0.5 ? dvsColor(signed) : uCat[id];
-        // a touch of self-illumination on strong anomalies
-        color += color*strength*0.35;
+        // self-illumination on strong anomalies (keeps the slice vivid)
+        color += color*strength*0.5;
         float ndv=clamp(dot(normalize(vN),normalize(vV)),0.0,1.0);
         float limb=smoothstep(0.0,0.32,ndv);
         float isFeat = id>0 ? 1.0 : 0.0;
@@ -130,13 +130,13 @@ export function makeScanShell(scanTexture){
         float alpha = mix(aData, aInf, gap);
         // luminous rim so the current depth reads as a distinct thin slice surface
         float rim=pow(1.0-ndv,4.0);
-        color=mix(color, vec3(0.62,0.95,1.0), rim*0.7);
-        alpha=max(alpha, rim*0.55*uOpacity);
+        color=mix(color, vec3(0.62,0.95,1.0), rim*0.8);
+        alpha=max(alpha, rim*0.72*uOpacity);
         gl_FragColor=vec4(color,alpha);
       }`,
   });
   const mesh=new THREE.Mesh(geo,mat);
-  mesh.renderOrder=2;
+  mesh.renderOrder=4.6;   // draw the current-depth slice ON TOP of the 3-D bodies so it reads clearly
   return {
     mesh, material:mat,
     setRadius:(u)=>mesh.scale.setScalar(Math.max(0.012,u)),
