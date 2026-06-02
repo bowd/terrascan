@@ -128,7 +128,21 @@ export function makeKarst(data){
       label.position.copy(pos).addScaledVector(centre, 0.045); label.renderOrder=8.5;
       group.add(label); labelMat=label.material;
     }
-    pins.push({cave:c, dot, label, dotMat, labelMat, centre});
+    // caves with a real 3-D survey get a ring — a "click to enter" affordance
+    let ringMat=null;
+    if(c.model){
+      const t1=new THREE.Vector3(0,1,0).cross(centre); if(t1.lengthSq()<1e-6) t1.set(1,0,0); t1.normalize();
+      const t2=centre.clone().cross(t1).normalize();
+      const rv=[]; const RN=44, rr=Math.max(0.018, rad*2.6);
+      for(let i=0;i<=RN;i++){ const a=i/RN*Math.PI*2;
+        const pp=pos.clone().addScaledVector(t1,Math.cos(a)*rr).addScaledVector(t2,Math.sin(a)*rr);
+        rv.push(pp.x,pp.y,pp.z); }
+      const rg=new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rv,3));
+      ringMat=new THREE.LineBasicMaterial({color:col, transparent:true, opacity:0.85,
+        depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending});
+      const ring=new THREE.Line(rg, ringMat); ring.renderOrder=7.6; group.add(ring);
+    }
+    pins.push({cave:c, dot, label, dotMat, labelMat, ringMat, centre});
   }
 
   // hemisphere fade: hide what's on the back of the globe (called from the render loop)
@@ -139,6 +153,7 @@ export function makeKarst(data){
       const o=THREE.MathUtils.smoothstep(f, -0.05, 0.35);
       p.dotMat.opacity=Math.max(o*0.95, 0.10);
       if(p.labelMat) p.labelMat.opacity=o;
+      if(p.ringMat) p.ringMat.opacity=o*0.85;
     }
     for(const r of regions){
       const f=r.centre.dot(camDirNorm);
@@ -157,7 +172,8 @@ export function makeKarst(data){
     return `<b>${c.name}</b>`+
       `<span class="tip-type">${(c.type||'cave').replace(/-/g,' ')} · ${kind}</span>`+
       `<span class="tip-d">${[c.country, stats.join(' · ')].filter(Boolean).join(' — ')}`+
-      `${c.note?'<br>'+c.note:''}${c.source?'<br>'+c.source:''}<br>click to look it up ↗</span>`;
+      `${c.note?'<br>'+c.note:''}${c.source?'<br>'+c.source:''}`+
+      `<br>${c.model?'click to fly into the 3-D survey ↘':'click to look it up ↗'}</span>`;
   }
 
   return { group, pins, pickDots, regions, fade, infoHTML };

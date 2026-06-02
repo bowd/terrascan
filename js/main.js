@@ -9,6 +9,7 @@ import { loadGeo, rasterizeLand, buildCoastlines, buildGraticule, latLonToVec3 }
 import { makeTheoryShells, makeScanShell } from './shells.js';
 import { makeStructures } from './structures.js';
 import { makeKarst } from './karst.js';
+import { makeCaveModel } from './cavemodel.js';
 import { makeReliefEarth } from './surface.js';
 import { makePipeline } from './postfx.js';
 import { initControls } from './ui.js';
@@ -189,6 +190,7 @@ function applyCutaway(){                                  // drop everything sha
 
 let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj, expObj, dataBodies, karst;
 let earthWire, hovered=null, glideCam=null, glideTarget=null, savedCam=null, savedTarget=null;
+let caveFocus=null;   // {cave, cm, saved:[[obj,visible]…]} while a real cave survey is rendered
 const raycaster=new THREE.Raycaster(), ptr=new THREE.Vector2(); let downPos=null;
 const DOT_GEO=new THREE.SphereGeometry(0.012, 12, 12);
 
@@ -236,7 +238,8 @@ async function init(){
   // Loaded async and guarded — a missing/short file never blocks boot.
   try{
     const kd=await fetch('./data/karst.json').then(r=>r.json());
-    karst=makeKarst(kd); karst.group.visible=state.showKarst; scanScene.add(karst.group); window.__karst=karst;
+    karst=makeKarst(kd); karst.group.visible=state.showKarst; scanScene.add(karst.group);
+    window.__karst=karst; window.__enterCave=enterCaveFocus;
   }catch(e){ console.warn('karst load failed', e); }
 
   ui=initControls(handlers);
@@ -331,7 +334,7 @@ const handlers={
   onStep:(dz)=>{ stopTour(); stopDive(); setDepth(state.depth+dz); },
   onTour:()=>{ state.touring?stopTour():startTour(); },
   onTourStop:()=>stopTour(),
-  onExitFocus:()=>exitFocus(),
+  onExitFocus:()=>{ if(caveFocus) exitCaveFocus(); else exitFocus(); },
   onPresetSave:(name)=>{ presets.save(name); renderPresets(); },
   onPresetLoad:(id)=>{ if(presets.load(id)){ renderPresets(); ui.presetPulse&&ui.presetPulse(); } },
   onPresetDelete:(id)=>{ presets.remove(id); renderPresets(); },
@@ -514,7 +517,7 @@ function initPicking(){
   const el=renderer.domElement;
   el.addEventListener('pointerdown',e=>{ downPos={x:e.clientX,y:e.clientY}; });
   el.addEventListener('pointermove',e=>{
-    if(state.focused){ return; }
+    if(state.focused||caveFocus){ return; }
     const exp=(expObj && expObj.group.visible)?pickExp(e.clientX,e.clientY):null;
     if(exp){ ui.tipHTML(expTipHTML(exp), e.clientX, e.clientY); el.style.cursor='pointer'; structures.setHover(null); structures.setFootHover(null); hovered=null; return; }
     const kv=(karst && karst.group.visible)?pickKarst(e.clientX,e.clientY):null;
@@ -529,11 +532,15 @@ function initPicking(){
   tape=[{target:controls.target.clone(), camPos:camera.position.clone()}]; navIdx=0;
   el.addEventListener('click',e=>{
     if(downPos && Math.hypot(e.clientX-downPos.x,e.clientY-downPos.y)>6) return; // was a drag
-    if(state.focused) return;
+    if(state.focused||caveFocus) return;
     const exp=(expObj && expObj.group.visible)?pickExp(e.clientX,e.clientY):null;
     if(exp){ if(exp.src) window.open(exp.src,'_blank','noopener'); return; }
     const kv=(karst && karst.group.visible)?pickKarst(e.clientX,e.clientY):null;
-    if(kv){ window.open('https://en.wikipedia.org/wiki/Special:Search?search='+encodeURIComponent(kv.name),'_blank','noopener'); return; }
+    if(kv){
+      if(kv.model) enterCaveFocus(kv);                       // real survey → fly into the passages
+      else window.open('https://en.wikipedia.org/wiki/Special:Search?search='+encodeURIComponent(kv.name),'_blank','noopener');
+      return;
+    }
     if(!structures.group.visible) return;
     const f=pickAt(e.clientX,e.clientY); if(f) enterFocus(f);
   });
@@ -562,6 +569,51 @@ function exitFocus(){
   glideTarget=new THREE.Vector3(0,0,0);                 // the globe pivot is always the origin
   glideCam=savedCam?savedCam.clone():new THREE.Vector3(0.2,0.9,3.0);
   controls.autoRotate=state.spin;
+}
+
+// ---------- real cave survey: fly into a focused cave's 3-D passages ----------
+async function enterCaveFocus(cave){
+  if(caveFocus || !cave.model) return;
+  stopTour(); stopDive(); ui.tip(null);
+  let model;
+  try{ model=await fetch('./data/caves/'+cave.model+'.json').then(r=>r.json()); }
+  catch(e){ console.warn('cave model load failed', e); return; }
+  const cm=makeCaveModel(model);
+  scanScene.add(cm.group);
+  // declutter to a ghost Earth so the survey is the subject
+  const saved=[];
+  const hide=(o)=>{ if(o){ saved.push([o,o.visible]); o.visible=false; } };
+  hide(scan&&scan.mesh); hide(structures&&structures.group); hide(dataBodies&&dataBodies.group);
+  hide(relief&&relief.mesh); hide(relief&&relief.water); hide(coastObj); hide(gratObj); hide(bordersObj);
+  hide(expObj&&expObj.group); hide(markerGroup); hide(karst&&karst.group);
+  earthWire.visible=true;
+  document.body.classList.add('focusing');
+  controls.autoRotate=false;
+  const savedMin=controls.minDistance, savedTheory=state.showTheory;
+  controls.minDistance=0.04;                 // let the camera get right up to the (tiny) cave
+  state.showTheory=false;                     // drop the orange PREM haze for a clean view
+  savedCam=camera.position.clone(); savedTarget=controls.target.clone();
+  const viewDir=camera.position.clone().sub(controls.target).normalize();
+  const dir=cm.up.clone().multiplyScalar(0.8).add(viewDir.multiplyScalar(0.65)).normalize();
+  glideTarget=cm.center.clone();
+  glideCam=cm.center.clone().add(dir.multiplyScalar(Math.max(0.22, cm.radius*2.2)));
+  caveFocus={cave, cm, saved, savedMin, savedTheory};
+  ui.caveCard({name:model.name, depthM:model.depthM, lengthKm:model.lengthKm,
+    country:cave.country, source:model.source||cave.source});
+}
+function exitCaveFocus(){
+  if(!caveFocus) return;
+  const {cm,saved,savedMin,savedTheory}=caveFocus;
+  scanScene.remove(cm.group); cm.dispose();
+  for(const [o,v] of saved) o.visible=v;
+  earthWire.visible=false;
+  controls.minDistance=savedMin; state.showTheory=savedTheory;
+  document.body.classList.remove('focusing');
+  ui.caveCard(null);
+  glideTarget=new THREE.Vector3(0,0,0);
+  glideCam=savedCam?savedCam.clone():new THREE.Vector3(0.2,0.9,3.0);
+  controls.autoRotate=state.spin;
+  caveFocus=null;
 }
 
 // ---------- drill-zoom navigator (experimental) ----------
@@ -680,7 +732,7 @@ function onKey(e){
   if(e.key==='ArrowDown'){ stopTour(); stopDive(); setDepth(state.depth+Math.max(20,EARTH_RADIUS*0.01)); e.preventDefault(); }
   else if(e.key==='ArrowUp'){ stopTour(); stopDive(); setDepth(state.depth-Math.max(20,EARTH_RADIUS*0.01)); e.preventDefault(); }
   else if(e.code==='Space'){ handlers.onDive(); e.preventDefault(); }
-  else if(e.key==='Escape'){ exitFocus(); }
+  else if(e.key==='Escape'){ if(caveFocus) exitCaveFocus(); else exitFocus(); }
 }
 function fail(msg){
   const ov=document.getElementById('loading');

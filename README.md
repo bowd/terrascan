@@ -21,7 +21,7 @@ Two layers are composited in 3-D, sharing one camera:
 | **The model** | The smooth, radially-symmetric theoretical reference Earth (PREM). | **Blurry** — rendered to an offscreen buffer and Gaussian-blurred: an *estimation*, not an observation. Where the scan goes blind (the deep core), the estimate brightens to take over. |
 | **3D bodies** | Each feature (slab, plume, hot pile, cratonic keel, ULVZ) interpolated into a translucent, fuzzy-outlined body spanning its real depth range. | Slabs as dipping sheets, plumes as conduits, the two LLSVPs as basal piles. The body at your current depth brightens. **Hover** any body for what it is + its data sources; **click** to isolate it (the orbit pivot flies to its centre, the rest fade, a faint Earth stays for context) — Esc/back to return. |
 | **Relief surface** | A translucent blue-marble Earth with hill-shaded topography (+ optional country borders). | Geographic orientation you can see *through* to the interior — toggle it or fade it with the opacity slider. |
-| **Karst & caves** | The planet's soluble-rock skin: global karst belts (carbonate/evaporite outcrop) plus real, surveyed long / deep / flooded cave systems. | Belts glow faintly by regime (coastal-flooded · alpine · continental) — they stand for the *unmapped frontier*. Dots are the *mapped* systems: **teal** = water-filled (cenotes, blue holes, sumps, springs), **amber** = dry passage, **violet** = depth records — sized by length or depth. Hover for stats & source; click to look one up. |
+| **Karst & caves** | The planet's soluble-rock skin: global karst belts (carbonate/evaporite outcrop) plus real, surveyed long / deep / flooded cave systems. | Belts glow faintly by regime (coastal-flooded · alpine · continental) — they stand for the *unmapped frontier*. Dots are the *mapped* systems: **teal** = water-filled (cenotes, blue holes, sumps, springs), **amber** = dry passage, **violet** = depth records — sized by length or depth. Hover for stats & source; click to look one up. A few dots carry a **ring** — click to fly into the cave's **real surveyed passages in 3-D** (lofted from the actual LRUD cross-sections), pinned and oriented at its entrance, blown up to a visible size. |
 | **Theory in gaps** | Where seismic coverage is too thin to resolve, the *expected* field is shown faintly under a diagonal **hatch**. | Makes "no data here — this is the model's guess" explicit, instead of just fading to nothing. |
 
 Each depth also reports its **temperature** (K and °C, flagged as a modelled estimate with a ± and "not measured"), pressure, density, the resolved-coverage %, and a plain "what we know here" note.
@@ -73,6 +73,12 @@ than seismic inference — places humans have physically surveyed. The belts fol
 (WOKAM; Goldscheider et al. 2020); the cave dots come from the UIS / Bob Gulden long- &
 deep-cave lists and the underwater-cave literature, current to 2025–26. The belts are
 deliberately a coarse wash — a reminder that only a sliver of that rock has ever been mapped.
+
+The clickable **3-D cave surveys** are real Survex `.3d` centreline+LRUD data from the
+Cambridge University Caving Club's long-running Loser-plateau expedition
+([expo.survex.com](https://expo.survex.com)) — parsed, georeferenced from UTM33N, and
+baked to compact JSON by `build-caves.mjs`. They're shown by courtesy of CUCC; the survey
+effort is theirs.
 
 ## Deploy to GitHub Pages
 
