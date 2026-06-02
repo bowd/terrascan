@@ -9,7 +9,7 @@ import { loadGeo, rasterizeLand, buildCoastlines, buildGraticule, latLonToVec3 }
 import { makeTheoryShells, makeScanShell } from './shells.js';
 import { makeStructures } from './structures.js';
 import { makeKarst } from './karst.js';
-import { makeCaveModel } from './cavemodel.js';
+import { makeCaves3d } from './caves3d.js';
 import { makeExpModel } from './expmodel.js';
 import { lodScale, labelShown } from './markerlod.js';
 import { makeReliefEarth } from './surface.js';
@@ -192,7 +192,10 @@ function applyCutaway(){                                  // drop everything sha
 
 let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj, expObj, dataBodies, karst;
 let earthWire, hovered=null, glideCam=null, glideTarget=null, savedCam=null, savedTarget=null;
-let modelFocus=null;  // {built, saved:[[obj,visible]…], …} while a cave/experiment model is rendered
+let modelFocus=null;  // {built, saved…} while an EXPERIMENT target is rendered (ghost-Earth)
+let caveFocus=null;   // {cm, savedMin, savedReliefBlend} while a cave is gently focused (scene stays)
+let caves3d=null;     // always-on 3-D cave-survey layer
+let modelCaves=[];    // metadata for the surveyed caves (drives the launcher)
 let detailTarget=null; // {kind:'cave'|'exp', obj} backing the click-to-inspect detail panel
 const raycaster=new THREE.Raycaster(), ptr=new THREE.Vector2(); let downPos=null;
 const DOT_GEO=new THREE.SphereGeometry(0.012, 12, 12);
@@ -242,6 +245,10 @@ async function init(){
   try{
     const kd=await fetch('./data/karst.json').then(r=>r.json());
     karst=makeKarst(kd); karst.group.visible=state.showKarst; scanScene.add(karst.group);
+    modelCaves=(kd.caves||[]).filter(c=>c.model);
+    // build the always-on 3-D cave-survey layer in the background (don't block boot)
+    makeCaves3d(modelCaves).then(c3=>{ caves3d=c3; caves3d.group.visible=state.showScans;
+      scanScene.add(caves3d.group); window.__caves3d=caves3d; }).catch(e=>console.warn('caves3d load failed', e));
     window.__karst=karst; window.__enterCave=enterCaveFocus; window.__flyToSurface=flyToSurface;
     window.__enterExp=enterExpFocus; window.__openDetail=openDetail; window.__exps=EXPERIMENTS;
   }catch(e){ console.warn('karst load failed', e); }
@@ -250,8 +257,8 @@ async function init(){
   ui.colorMode('dvs');
   ui.dataBody(dataSourcesHTML(DATA_GROUPS));
   ui.reflectDials(dialNorms());
-  if(karst) ui.caveList(karst.pins.filter(p=>p.cave.model).map(p=>(
-    {model:p.cave.model, name:p.cave.name, country:p.cave.country, depthM:p.cave.depth_m, lengthKm:p.cave.len_km})));
+  ui.caveList(modelCaves.map(c=>(
+    {model:c.model, name:c.name, country:c.country, depthM:c.depth_m, lengthKm:c.len_km})));
   let seen=false; try{ seen=!!localStorage.getItem('terrascan_seen'); }catch(e){}
   if(!seen) ui.guide(true); // show the intro once; the ⓘ button reopens it
 
@@ -310,8 +317,8 @@ const handlers={
     else if(name==='foot'){ state.showFoot=v; structures.footGroup.visible=v; }
     else if(name==='exp'){ state.showExp=v; expObj.group.visible=v; }
     else if(name==='karst'){ state.showKarst=v; if(karst) karst.group.visible=v; }
-    else if(name==='caves'){ state.showCaves=v; if(karst) karst.setCaves(v); }     // plain caves
-    else if(name==='scans'){ state.showScans=v; if(karst) karst.setScans(v); }     // caves with a 3-D survey
+    else if(name==='caves'){ state.showCaves=v; if(karst) karst.setCaves(v); }      // plain caves (dots)
+    else if(name==='scans'){ state.showScans=v; if(caves3d) caves3d.group.visible=v; } // 3-D cave surveys
     else if(name==='scan'){ state.showScan=v; scan.mesh.visible=v; }
     else if(name==='infer'){ state.showInfer=v; scan.setInfer(v?1:0); }
     else if(name==='theory') state.showTheory=v;
@@ -342,10 +349,9 @@ const handlers={
   onStep:(dz)=>{ stopTour(); stopDive(); setDepth(state.depth+dz); },
   onTour:()=>{ state.touring?stopTour():startTour(); },
   onTourStop:()=>stopTour(),
-  onExitFocus:()=>{ if(modelFocus) exitModelFocus(); else exitFocus(); },
+  onExitFocus:()=>{ if(caveFocus) exitCaveFocus(); else if(modelFocus) exitModelFocus(); else exitFocus(); },
   onDetailClose:()=>{ ui.detail(null); detailTarget=null; },
-  onCaveGoto:(model)=>{ const p=karst&&karst.pins.find(x=>x.cave.model===model); if(!p) return;
-    flyToSurface(p.cave.lat, p.cave.lon, 1.85); openDetail('cave', p.cave); },
+  onCaveGoto:(model)=>{ const c=modelCaves.find(x=>x.model===model); if(c) enterCaveFocus(c); },
   onDetailAction:()=>{ if(!detailTarget) return; const {kind,obj}=detailTarget; detailTarget=null;
     if(kind==='cave' && obj.model) enterCaveFocus(obj);
     else if(kind==='exp' && obj.model) enterExpFocus(obj); },
@@ -455,6 +461,14 @@ function pickKarst(cx,cy){
   const h=raycaster.intersectObjects(karst.pickDots,false);
   return h.length?h[0].object.userData.cave:null;
 }
+function pickCaves3d(cx,cy){              // returns the cave-model object (cm), or null
+  if(!caves3d || !caves3d.group.visible) return null;
+  const r=renderer.domElement.getBoundingClientRect();
+  ptr.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
+  raycaster.setFromCamera(ptr,camera);
+  const h=raycaster.intersectObjects(caves3d.pickProxies,false);
+  return h.length?caves3d.caveOf(h[0].object):null;
+}
 function expTipHTML(e){
   const k=EXP_KIND[e.kind];
   return `<b>${e.name}</b><span class="tip-type">${k.label}${e.year?' · '+e.year:''}</span>`+
@@ -531,9 +545,12 @@ function initPicking(){
   const el=renderer.domElement;
   el.addEventListener('pointerdown',e=>{ downPos={x:e.clientX,y:e.clientY}; });
   el.addEventListener('pointermove',e=>{
-    if(state.focused||modelFocus){ return; }
+    if(state.focused||modelFocus||caveFocus){ return; }
     const exp=(expObj && expObj.group.visible)?pickExp(e.clientX,e.clientY):null;
+    const cv=(!exp)?pickCaves3d(e.clientX,e.clientY):null;
+    if(caves3d) caves3d.setHover(cv||null);                  // highlight the hovered cave (or clear)
     if(exp){ ui.tipHTML(expTipHTML(exp), e.clientX, e.clientY); el.style.cursor='pointer'; structures.setHover(null); structures.setFootHover(null); hovered=null; return; }
+    if(cv){ ui.tipHTML(karst.infoHTML(cv.cave), e.clientX, e.clientY); el.style.cursor='pointer'; structures.setHover(null); structures.setFootHover(null); hovered=null; return; }
     const kv=(karst && karst.group.visible)?pickKarst(e.clientX,e.clientY):null;
     if(kv){ ui.tipHTML(karst.infoHTML(kv), e.clientX, e.clientY); el.style.cursor='pointer'; structures.setHover(null); structures.setFootHover(null); hovered=null; return; }
     const f=structures.group.visible?pickAt(e.clientX,e.clientY):null; hovered=f;
@@ -546,11 +563,13 @@ function initPicking(){
   tape=[{target:controls.target.clone(), camPos:camera.position.clone()}]; navIdx=0;
   el.addEventListener('click',e=>{
     if(downPos && Math.hypot(e.clientX-downPos.x,e.clientY-downPos.y)>6) return; // was a drag
-    if(state.focused||modelFocus) return;
+    if(state.focused||modelFocus||caveFocus) return;
     const exp=(expObj && expObj.group.visible)?pickExp(e.clientX,e.clientY):null;
-    if(exp){ openDetail('exp', exp); return; }               // inspect panel first, then link / zoom-to-target
+    if(exp){ openDetail('exp', exp); return; }               // experiments: inspect panel → zoom-to-target
+    const cv=pickCaves3d(e.clientX,e.clientY);
+    if(cv){ enterCaveFocus(cv.cave); return; }               // surveyed cave: straight into the passages
     const kv=(karst && karst.group.visible)?pickKarst(e.clientX,e.clientY):null;
-    if(kv){ openDetail('cave', kv); return; }                // inspect panel first, then link / descend
+    if(kv){ openDetail('cave', kv); return; }                // plain cave: info panel + external link
     if(!structures.group.visible) return;
     const f=pickAt(e.clientX,e.clientY); if(f) enterFocus(f);
   });
@@ -605,17 +624,53 @@ function expDetail(e){
     actionLabel: e.model ? '▶ Zoom to the target' : null };
 }
 
-// ---------- model focus: fly into a cave survey or an experiment target -------
-async function enterCaveFocus(cave){
-  if(modelFocus || !cave.model) return;
-  let model;
-  try{ model=await fetch('./data/caves/'+cave.model+'.json').then(r=>r.json()); }
-  catch(e){ console.warn('cave model load failed', e); return; }
-  const cm=makeCaveModel(model);
-  enterModelFocus(cm, { type:'CAVE SURVEY · real data', name:model.name,
-    desc:'Actual surveyed passages — the walls are measured LRUD cross-sections (or splay-shot wall points). '+(cave.country||''),
-    rows:[['depth', model.depthM!=null?model.depthM+' m':'—'], ['surveyed', model.lengthKm!=null?model.lengthKm+' km':'—']],
-    source: model.source||cave.source });
+// ---------- cave focus (gentle): glide in, dim the others, fade the crust ------
+// the whole scene + every layer stays; we just brighten this cave, dim its siblings,
+// make the surface translucent so the passages read, and glide the camera onto it.
+function enterCaveFocus(cave){
+  if(caveFocus || modelFocus || !caves3d) return;
+  const cm=caves3d.modelFor(cave); if(!cm) return;
+  stopTour(); stopDive(); ui.tip(null); ui.detail(null); detailTarget=null;
+  caves3d.focus(cm);
+  document.body.classList.add('focusing');
+  controls.autoRotate=false;
+  const savedMin=controls.minDistance; controls.minDistance=0.02;
+  // keep every layer present but fade them down so the passages read clearly
+  if(relief) relief.setOpacity(0.14);
+  if(scan) scan.setOpacity(0.09);
+  if(dataBodies) dataBodies.setOpacity(0.12);
+  if(structures) structures.setOpacity(0.10);
+  // hide the marker/label clutter (dots, pins, text) so the cave is the subject
+  const savedVis=[[markerGroup, markerGroup.visible]];
+  if(expObj) savedVis.push([expObj.group, expObj.group.visible]);
+  if(karst) savedVis.push([karst.group, karst.group.visible]);
+  for(const [o] of savedVis) o.visible=false;
+  savedCam=camera.position.clone(); savedTarget=controls.target.clone();
+  const viewDir=camera.position.clone().sub(controls.target).normalize();
+  const dir=cm.up.clone().multiplyScalar(0.7).add(viewDir.multiplyScalar(0.7)).normalize();
+  glideTarget=cm.center.clone();
+  glideCam=cm.center.clone().add(dir.multiplyScalar(Math.max(0.09, cm.radius*1.9)));
+  caveFocus={cm, cave, savedMin, savedVis};
+  ui.modelCard({ type:'CAVE SURVEY · real data', name:cm.name,
+    desc:'Actual surveyed passages — walls are measured cross-sections (or splay-shot wall points). '+(cave.country||''),
+    rows:[['depth', cm.depthM!=null?cm.depthM+' m':'—'], ['surveyed', cm.lengthKm!=null?cm.lengthKm+' km':'—']],
+    source: cave.source });
+}
+function exitCaveFocus(){
+  if(!caveFocus) return;
+  caves3d.focus(null);
+  controls.minDistance=caveFocus.savedMin;
+  setReliefOpacity();                                        // restore the crust + interior layers
+  if(scan) scan.setOpacity(dials.scanStrength);
+  if(dataBodies) dataBodies.setOpacity(dials.bodyOpacity);
+  if(structures) structures.setOpacity(dials.featOpacity);
+  for(const [o,v] of caveFocus.savedVis) o.visible=v;        // restore markers/dots/pins
+  document.body.classList.remove('focusing');
+  ui.modelCard(null);
+  glideTarget=new THREE.Vector3(0,0,0);
+  glideCam=savedCam?savedCam.clone():new THREE.Vector3(0.2,0.9,3.0);
+  controls.autoRotate=state.spin;
+  caveFocus=null;
 }
 function enterExpFocus(exp){
   if(modelFocus) return;
@@ -770,6 +825,7 @@ function fadeMarkers(t){
     if(showL){ m.label.scale.set(m.labelBase.x*f, m.labelBase.y*f, 1); m.labelMat.opacity=o; }
   }
   if(karst && karst.group.visible) karst.fade(_c, _cp, zoom, t);
+  if(caves3d && caves3d.group.visible) caves3d.update(_c);
   declutterLabels();
 }
 // screen-space declutter: keep labels by priority then proximity; hide ones that collide
@@ -812,7 +868,7 @@ function onKey(e){
   if(e.key==='ArrowDown'){ stopTour(); stopDive(); setDepth(state.depth+Math.max(20,EARTH_RADIUS*0.01)); e.preventDefault(); }
   else if(e.key==='ArrowUp'){ stopTour(); stopDive(); setDepth(state.depth-Math.max(20,EARTH_RADIUS*0.01)); e.preventDefault(); }
   else if(e.code==='Space'){ handlers.onDive(); e.preventDefault(); }
-  else if(e.key==='Escape'){ if(modelFocus) exitModelFocus(); else if(detailTarget){ ui.detail(null); detailTarget=null; } else exitFocus(); }
+  else if(e.key==='Escape'){ if(caveFocus) exitCaveFocus(); else if(modelFocus) exitModelFocus(); else if(detailTarget){ ui.detail(null); detailTarget=null; } else exitFocus(); }
 }
 function fail(msg){
   const ov=document.getElementById('loading');

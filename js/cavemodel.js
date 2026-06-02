@@ -1,31 +1,29 @@
 // cavemodel.js — turn a baked real cave survey (data/caves/<id>.json) into a 3-D
-// passage model, anchored + oriented at the cave's surface point on the globe and
-// blown up to a visible size. Two layers: the centreline skeleton (glowing lines)
-// and lofted LRUD passage walls (the "tubes" — real surveyed cross-sections).
+// passage object that lives IN the scene at the cave's spot on the globe (like the
+// extracted-feature blobs): always on, drawn on top, hover-highlightable, click to
+// focus. Centreline skeleton + lofted LRUD walls (or a splay-shot wall cloud).
 //
-// Baked JSON shape (all coords are local ENU centimetres relative to the top station):
+// Baked JSON shape (local ENU centimetres relative to the top station):
 //   { name, dot:[lat,lon], altTop, depthM, lengthKm,
-//     segs:[e0,n0,u0,e1,n1,u1, …],            // centreline leg endpoints
-//     walls:[ run, … ], run=[ ring, … ], ring=[Lx,Ly,Lz,Ux,Uy,Uz,Rx,Ry,Rz,Dx,Dy,Dz] }
+//     segs:[e0,n0,u0,e1,n1,u1, …], walls:[ run, … ], run=[ ring=[Lx..Dz] … ], splays:[x,y,z,…] }
 import * as THREE from 'three';
 import { latLonToVec3 } from './geo.js';
 
-const TARGET = 0.135;   // app-units the cave's largest dimension maps to (Earth radius = 1)
+const SIZE = 0.055;   // app-units the cave's largest dimension maps to (compact, always-on)
 
-export function makeCaveModel(model){
+export function makeCaveModel(model, cave){
   const [lat,lon] = model.dot;
-  const anchor = latLonToVec3(lat, lon, 1.0);                 // entrance ≈ surface point
+  const anchor = latLonToVec3(lat, lon, 1.0);
   const up     = anchor.clone().normalize();
   const east   = latLonToVec3(lat, lon+0.02, 1).sub(latLonToVec3(lat, lon-0.02, 1)).normalize();
   const north  = latLonToVec3(lat+0.02, lon, 1).sub(latLonToVec3(lat-0.02, lon, 1)).normalize();
 
-  // normalise size: largest centreline offset (m) -> TARGET app-units
   let maxr = 1;
   for(let i=0;i<model.segs.length;i+=3){
     const r=Math.hypot(model.segs[i]/100, model.segs[i+1]/100, model.segs[i+2]/100);
     if(r>maxr) maxr=r;
   }
-  const scale = TARGET/maxr;                                  // app-units per metre
+  const scale = SIZE/maxr;
   const toW=(ecm,ncm,ucm)=>{
     const e=ecm/100*scale, n=ncm/100*scale, u=ucm/100*scale;
     return new THREE.Vector3(
@@ -34,7 +32,7 @@ export function makeCaveModel(model){
       anchor.z + east.z*e + north.z*n + up.z*u);
   };
 
-  const group=new THREE.Group(); group.renderOrder=7;
+  const group=new THREE.Group(); group.renderOrder=8;
 
   // ---- centreline skeleton --------------------------------------------------
   const lv=[]; let cx=0,cy=0,cz=0,nc=0;
@@ -47,12 +45,12 @@ export function makeCaveModel(model){
   const lg=new THREE.BufferGeometry();
   lg.setAttribute('position', new THREE.Float32BufferAttribute(lv,3));
   const lineMat=new THREE.LineBasicMaterial({color:0xbfeaff, transparent:true, opacity:0.55,
-    depthTest:true, depthWrite:false, blending:THREE.AdditiveBlending});
-  const lines=new THREE.LineSegments(lg, lineMat); lines.renderOrder=7.3; group.add(lines);
+    depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending});
+  const lines=new THREE.LineSegments(lg, lineMat); lines.renderOrder=8.3; group.add(lines);
 
   // ---- lofted LRUD passage walls -------------------------------------------
   const wv=[];
-  const pt=(ring,k)=>toW(ring[k*3], ring[k*3+1], ring[k*3+2]);   // k: 0=L 1=U 2=R 3=D
+  const pt=(ring,k)=>toW(ring[k*3], ring[k*3+1], ring[k*3+2]);
   const EDGES=[[0,1],[1,2],[2,3],[3,0]];
   for(const run of model.walls){
     for(let i=0;i<run.length-1;i++){
@@ -68,15 +66,15 @@ export function makeCaveModel(model){
   wg.setAttribute('position', new THREE.Float32BufferAttribute(wv,3));
   wg.computeVertexNormals();
   const wallMat=new THREE.ShaderMaterial({
-    transparent:true, depthTest:true, depthWrite:true, side:THREE.DoubleSide, blending:THREE.NormalBlending,
-    uniforms:{ uColor:{value:new THREE.Color(0xf0c98a)}, uEdge:{value:new THREE.Color(0xfff1d6)}, uOpacity:{value:0.66} },
+    transparent:true, depthTest:false, depthWrite:false, side:THREE.DoubleSide, blending:THREE.AdditiveBlending,
+    uniforms:{ uColor:{value:new THREE.Color(0xe8b878)}, uEdge:{value:new THREE.Color(0xfff1d6)}, uOpacity:{value:0.34} },
     vertexShader:`varying vec3 vN; varying vec3 vV;
       void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); vV=-mv.xyz; vN=normalMatrix*normal; gl_Position=projectionMatrix*mv; }`,
     fragmentShader:`uniform vec3 uColor; uniform vec3 uEdge; uniform float uOpacity; varying vec3 vN; varying vec3 vV;
       void main(){ vec3 N=normalize(vN); vec3 V=normalize(vV); float f=pow(1.0-abs(dot(N,V)),1.4);
-        vec3 col=mix(uColor*0.55, uEdge, f); float a=uOpacity*(0.55+0.45*f); gl_FragColor=vec4(col,a); }`,
+        vec3 col=mix(uColor*0.6, uEdge, f); float a=uOpacity*(0.5+0.5*f); gl_FragColor=vec4(col,a); }`,
   });
-  const walls=new THREE.Mesh(wg, wallMat); walls.renderOrder=7.1; group.add(walls);
+  const walls=new THREE.Mesh(wg, wallMat); walls.renderOrder=8.1; group.add(walls);
 
   // ---- splay-shot wall cloud (caves surveyed with splays, not LRUD) ---------
   let splayMat=null, splayGeo=null;
@@ -84,20 +82,33 @@ export function makeCaveModel(model){
     const sv=[];
     for(let i=0;i<model.splays.length;i+=3){ const p=toW(model.splays[i],model.splays[i+1],model.splays[i+2]); sv.push(p.x,p.y,p.z); }
     splayGeo=new THREE.BufferGeometry(); splayGeo.setAttribute('position', new THREE.Float32BufferAttribute(sv,3));
-    splayMat=new THREE.PointsMaterial({color:0xffd9a0, size:0.0042, sizeAttenuation:true,
-      transparent:true, opacity:0.34, depthWrite:false, blending:THREE.AdditiveBlending});
-    const pts=new THREE.Points(splayGeo, splayMat); pts.renderOrder=7.0; group.add(pts);
+    splayMat=new THREE.PointsMaterial({color:0xffd9a0, size:0.0034, sizeAttenuation:true,
+      transparent:true, opacity:0.3, depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending});
+    const pts=new THREE.Points(splayGeo, splayMat); pts.renderOrder=8.0; group.add(pts);
   }
 
-  // ---- framing helpers ------------------------------------------------------
+  // ---- centre / radius / pick proxy ----------------------------------------
   const center = nc ? new THREE.Vector3(cx/nc, cy/nc, cz/nc) : anchor.clone();
-  let radius=0.06;
+  let radius=0.02;
   for(let i=0;i<lv.length;i+=3){ const d=center.distanceTo(new THREE.Vector3(lv[i],lv[i+1],lv[i+2])); if(d>radius) radius=d; }
+  // invisible, raycastable sphere so hover/click is reliable (not per-line)
+  const pickProxy=new THREE.Mesh(new THREE.SphereGeometry(radius*0.92, 8, 8),
+    new THREE.MeshBasicMaterial({transparent:true, opacity:0, depthWrite:false, depthTest:false}));
+  pickProxy.position.copy(center); pickProxy.userData={cave}; group.add(pickProxy);
 
-  function setOpacity(v){ wallMat.uniforms.uOpacity.value=v; lineMat.opacity=Math.min(0.8,v*0.85); if(splayMat) splayMat.opacity=v*0.7; }
-  function dispose(){ lg.dispose(); lineMat.dispose(); wg.dispose(); wallMat.dispose(); if(splayGeo){ splayGeo.dispose(); splayMat.dispose(); } }
+  // ---- emphasis states ------------------------------------------------------
+  const BASE={line:0.6, wall:0.4, splay:0.32};
+  const MULT={normal:1, hover:1.55, focus:1.7, dim:0.16};
+  function setEmphasis(mode){
+    const m=MULT[mode]||1;
+    lineMat.opacity=Math.min(1, BASE.line*m);
+    wallMat.uniforms.uOpacity.value=Math.min(0.85, BASE.wall*m);
+    if(splayMat) splayMat.opacity=Math.min(0.7, BASE.splay*m);
+  }
+  function dispose(){ lg.dispose(); lineMat.dispose(); wg.dispose(); wallMat.dispose();
+    pickProxy.geometry.dispose(); pickProxy.material.dispose(); if(splayGeo){ splayGeo.dispose(); splayMat.dispose(); } }
 
-  return { group, center, radius, anchor, up,
+  return { group, center, radius, anchor, up, centre:up.clone(), pickProxy, cave,
     name:model.name, depthM:model.depthM, lengthKm:model.lengthKm,
-    setOpacity, dispose };
+    setEmphasis, dispose };
 }

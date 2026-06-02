@@ -116,8 +116,9 @@ export function makeKarst(data){
   const TORUS=new THREE.TorusGeometry(1, 0.17, 8, 40);   // a real (thick) ring for scanned caves
   for(const c of CAV){
     if(typeof c.lat!=='number' || typeof c.lon!=='number') continue;
-    const isModel=!!c.model;
-    const tgt = isModel ? scanGroup : caveGroup;
+    if(c.model) continue;                  // surveyed caves are rendered in 3-D by caves3d.js
+    const isModel=false;
+    const tgt = caveGroup;
     const b=bucket(c), col=CAVE_COL[b];
     const hex='#'+col.toString(16).padStart(6,'0');
     const centre=latLonToVec3(c.lat, c.lon, 1).normalize();
