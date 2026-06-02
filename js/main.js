@@ -10,6 +10,7 @@ import { makeTheoryShells, makeScanShell } from './shells.js';
 import { makeStructures } from './structures.js';
 import { makeKarst } from './karst.js';
 import { makeCaveModel } from './cavemodel.js';
+import { lodScale, labelShown } from './markerlod.js';
 import { makeReliefEarth } from './surface.js';
 import { makePipeline } from './postfx.js';
 import { initControls } from './ui.js';
@@ -407,7 +408,7 @@ function spawnMarker(f){
   const label=makeLabel(shortName(f.name), color); label.renderOrder=9;
   g.add(dot); g.add(label);
   markerGroup.add(g);
-  return {name:f.name, group:g, dot, label, dotMat, labelMat:label.material, visible:true};
+  return {name:f.name, group:g, dot, label, dotMat, labelMat:label.material, labelBase:label.scale.clone(), priority:1, visible:true};
 }
 
 // ---------- experiment pins (muography / neutrino / geoneutrino) ----------
@@ -422,7 +423,7 @@ function buildExperimentPins(){
     const dot=new THREE.Mesh(EXP_GEO, dotMat); dot.position.copy(p); dot.renderOrder=9; dot.userData={exp:e};
     const label=makeLabel(e.name, colHex); label.position.copy(p).addScaledVector(p.clone().normalize(),0.045); label.renderOrder=10;
     group.add(dot); group.add(label);
-    pins.push({exp:e, dot, label, dotMat, labelMat:label.material}); pickDots.push(dot);
+    pins.push({exp:e, dot, label, dotMat, labelMat:label.material, labelBase:label.scale.clone()}); pickDots.push(dot);
   }
   return {group, pins, pickDots};
 }
@@ -703,22 +704,29 @@ function animate(){
   });
 }
 
-// fade markers / coastlines by which hemisphere faces the camera
-const _c=new THREE.Vector3();
+// fade + LOD: scale markers to ~constant screen size and reveal labels by zoom level
+const _c=new THREE.Vector3(), _cp=new THREE.Vector3();
 function fadeMarkers(){
-  camera.getWorldPosition(_c); _c.normalize();
+  camera.getWorldPosition(_cp); _c.copy(_cp).normalize();
+  const zoom=_cp.length();
   if(markerGroup.visible) for(const m of markers){
     if(!m.visible) continue;
-    const f=m.dot.position.clone().normalize().dot(_c);
-    const o=THREE.MathUtils.smoothstep(f, -0.1, 0.35);
-    m.labelMat.opacity=o; m.dotMat.opacity=Math.max(o,0.15);
+    const wp=m.dot.position, f=lodScale(_cp.distanceTo(wp));
+    const o=THREE.MathUtils.smoothstep(wp.clone().normalize().dot(_c), -0.1, 0.35);
+    m.dot.scale.setScalar(f); m.dotMat.opacity=Math.max(o,0.15);
+    const showL = o>0.05 && labelShown(m.priority||1, zoom);
+    m.label.visible=showL;
+    if(showL){ m.label.scale.set(m.labelBase.x*f, m.labelBase.y*f, 1); m.labelMat.opacity=o; }
   }
   if(expObj && expObj.group.visible) for(const m of expObj.pins){
-    const f=m.dot.position.clone().normalize().dot(_c);
-    const o=THREE.MathUtils.smoothstep(f, -0.05, 0.4);
-    m.labelMat.opacity=o; m.dotMat.opacity=Math.max(o*0.9,0.12);
+    const wp=m.dot.position, f=lodScale(_cp.distanceTo(wp));
+    const o=THREE.MathUtils.smoothstep(wp.clone().normalize().dot(_c), -0.05, 0.4);
+    m.dot.scale.setScalar(f); m.dotMat.opacity=Math.max(o*0.9,0.12);
+    const showL = o>0.05 && labelShown(2, zoom);
+    m.label.visible=showL;
+    if(showL){ m.label.scale.set(m.labelBase.x*f, m.labelBase.y*f, 1); m.labelMat.opacity=o; }
   }
-  if(karst && karst.group.visible) karst.fade(_c);
+  if(karst && karst.group.visible) karst.fade(_c, _cp, zoom);
 }
 
 // ---------- misc ----------

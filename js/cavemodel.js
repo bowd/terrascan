@@ -78,13 +78,24 @@ export function makeCaveModel(model){
   });
   const walls=new THREE.Mesh(wg, wallMat); walls.renderOrder=7.1; group.add(walls);
 
+  // ---- splay-shot wall cloud (caves surveyed with splays, not LRUD) ---------
+  let splayMat=null, splayGeo=null;
+  if(model.splays && model.splays.length){
+    const sv=[];
+    for(let i=0;i<model.splays.length;i+=3){ const p=toW(model.splays[i],model.splays[i+1],model.splays[i+2]); sv.push(p.x,p.y,p.z); }
+    splayGeo=new THREE.BufferGeometry(); splayGeo.setAttribute('position', new THREE.Float32BufferAttribute(sv,3));
+    splayMat=new THREE.PointsMaterial({color:0xffd9a0, size:0.0042, sizeAttenuation:true,
+      transparent:true, opacity:0.34, depthWrite:false, blending:THREE.AdditiveBlending});
+    const pts=new THREE.Points(splayGeo, splayMat); pts.renderOrder=7.0; group.add(pts);
+  }
+
   // ---- framing helpers ------------------------------------------------------
   const center = nc ? new THREE.Vector3(cx/nc, cy/nc, cz/nc) : anchor.clone();
   let radius=0.06;
   for(let i=0;i<lv.length;i+=3){ const d=center.distanceTo(new THREE.Vector3(lv[i],lv[i+1],lv[i+2])); if(d>radius) radius=d; }
 
-  function setOpacity(v){ wallMat.uniforms.uOpacity.value=v; lineMat.opacity=Math.min(0.8,v*0.85); }
-  function dispose(){ lg.dispose(); lineMat.dispose(); wg.dispose(); wallMat.dispose(); }
+  function setOpacity(v){ wallMat.uniforms.uOpacity.value=v; lineMat.opacity=Math.min(0.8,v*0.85); if(splayMat) splayMat.opacity=v*0.7; }
+  function dispose(){ lg.dispose(); lineMat.dispose(); wg.dispose(); wallMat.dispose(); if(splayGeo){ splayGeo.dispose(); splayMat.dispose(); } }
 
   return { group, center, radius, anchor, up,
     name:model.name, depthM:model.depthM, lengthKm:model.lengthKm,

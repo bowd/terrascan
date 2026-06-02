@@ -11,6 +11,11 @@
 //     by whether they're water-filled. Hover for stats + source, click to open it.
 import * as THREE from 'three';
 import { latLonToVec3 } from './geo.js';
+import { lodScale, labelShown } from './markerlod.js';
+
+// unit circle (XY plane) for the model-cave ring; positioned + scaled per marker
+function ringGeo(){ const v=[]; const N=48; for(let i=0;i<N;i++){ const a=i/N*Math.PI*2; v.push(Math.cos(a),Math.sin(a),0); }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v,3)); return g; }
 
 const D2R = Math.PI/180;
 
@@ -108,6 +113,7 @@ export function makeKarst(data){
 
   // ---- mapped caves: dots sized by magnitude, tinted by flooded/dry/deep --------
   const DOT=new THREE.SphereGeometry(1, 12, 12);
+  const RING=ringGeo();
   for(const c of CAV){
     if(typeof c.lat!=='number' || typeof c.lon!=='number') continue;
     const b=bucket(c), col=CAVE_COL[b];
@@ -122,38 +128,40 @@ export function makeKarst(data){
     dot.userData={cave:c};
     group.add(dot); pickDots.push(dot);
 
-    let label=null, labelMat=null;
-    if(c.label){                                  // only the marquee systems get a standing label
-      label=makeLabel(SHORT(c.name), hex);
-      label.position.copy(pos).addScaledVector(centre, 0.045); label.renderOrder=8.5;
-      group.add(label); labelMat=label.material;
-    }
-    // caves with a real 3-D survey get a ring — a "click to enter" affordance
-    let ringMat=null;
+    // every cave gets a label; LOD reveals it as you zoom in (declutter when out)
+    const label=makeLabel(SHORT(c.name), hex);
+    label.position.copy(pos).addScaledVector(centre, 0.05); label.renderOrder=8.5; label.visible=false;
+    group.add(label);
+    const labelBase=label.scale.clone(), labelMat=label.material;
+    const priority = c.model ? 3 : (c.label ? 2 : 4);   // model surveys reveal earlier than minor dots
+
+    // caves with a real 3-D survey get a ring — a "click to enter" affordance (scalable)
+    let ringMat=null, ring=null, ringBase=0;
     if(c.model){
-      const t1=new THREE.Vector3(0,1,0).cross(centre); if(t1.lengthSq()<1e-6) t1.set(1,0,0); t1.normalize();
-      const t2=centre.clone().cross(t1).normalize();
-      const rv=[]; const RN=44, rr=Math.max(0.018, rad*2.6);
-      for(let i=0;i<=RN;i++){ const a=i/RN*Math.PI*2;
-        const pp=pos.clone().addScaledVector(t1,Math.cos(a)*rr).addScaledVector(t2,Math.sin(a)*rr);
-        rv.push(pp.x,pp.y,pp.z); }
-      const rg=new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rv,3));
-      ringMat=new THREE.LineBasicMaterial({color:col, transparent:true, opacity:0.85,
-        depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending});
-      const ring=new THREE.Line(rg, ringMat); ring.renderOrder=7.6; group.add(ring);
+      ring=new THREE.LineLoop(RING, new THREE.LineBasicMaterial({color:col, transparent:true, opacity:0.85,
+        depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending}));
+      ring.position.copy(pos); ring.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), centre);
+      ringBase=Math.max(0.02, rad*2.6); ring.scale.setScalar(ringBase); ring.renderOrder=7.6;
+      group.add(ring); ringMat=ring.material;
     }
-    pins.push({cave:c, dot, label, dotMat, labelMat, ringMat, centre});
+    pins.push({cave:c, dot, label, dotMat, labelMat, ring, ringMat, centre, baseRad:rad, labelBase, ringBase, priority});
   }
 
   // hemisphere fade: hide what's on the back of the globe (called from the render loop)
-  const _n=new THREE.Vector3();
-  function fade(camDirNorm){
+  function fade(camDirNorm, camPos, zoom){
     for(const p of pins){
-      const f=p.centre.dot(camDirNorm);
-      const o=THREE.MathUtils.smoothstep(f, -0.05, 0.35);
+      const distM = camPos ? camPos.distanceTo(p.dot.position) : 2.6;
+      const sf = lodScale(distM);
+      const facing = p.centre.dot(camDirNorm);
+      const o=THREE.MathUtils.smoothstep(facing, -0.05, 0.35);
+      p.dot.scale.setScalar(p.baseRad * sf);                 // ~constant screen size
       p.dotMat.opacity=Math.max(o*0.95, 0.10);
-      if(p.labelMat) p.labelMat.opacity=o;
-      if(p.ringMat) p.ringMat.opacity=o*0.85;
+      if(p.ring){ p.ring.scale.setScalar(p.ringBase * sf); p.ringMat.opacity=o*0.8; }
+      if(p.label){
+        const show = o>0.05 && labelShown(p.priority, zoom||3.1);
+        p.label.visible=show;
+        if(show){ p.label.scale.set(p.labelBase.x*sf, p.labelBase.y*sf, 1); p.labelMat.opacity=o; }
+      }
     }
     for(const r of regions){
       const f=r.centre.dot(camDirNorm);
