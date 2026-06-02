@@ -1,0 +1,14 @@
+.git
+.gitignore
+.dockerignore
+deploy/Dockerfile.dockerignore
+node_modules
+deploy/*
+!deploy/nginx.conf
+shots
+build-geo.mjs
+build-caves.mjs
+shoot.mjs
+package.json
+package-lock.json
+README.md
