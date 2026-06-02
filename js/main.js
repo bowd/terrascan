@@ -65,7 +65,7 @@ theoryScene.add(theoryShells);
 const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
   showStruct:true, showBodies:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
-  showBorders:false, showMarkers:true, showFoot:false, showExp:false, showKarst:true, spin:true,
+  showBorders:false, showMarkers:true, showFoot:false, showExp:false, showKarst:true, showCaves:true, showScans:true, spin:true,
   diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'real', drillNav:false, cutaway:false, reliefPeel:true,
 };
 // drill-zoom navigation "tape": waypoints of {orbit target, camera position}
@@ -242,7 +242,7 @@ async function init(){
   try{
     const kd=await fetch('./data/karst.json').then(r=>r.json());
     karst=makeKarst(kd); karst.group.visible=state.showKarst; scanScene.add(karst.group);
-    window.__karst=karst; window.__enterCave=enterCaveFocus;
+    window.__karst=karst; window.__enterCave=enterCaveFocus; window.__flyToSurface=flyToSurface;
     window.__enterExp=enterExpFocus; window.__openDetail=openDetail; window.__exps=EXPERIMENTS;
   }catch(e){ console.warn('karst load failed', e); }
 
@@ -250,6 +250,8 @@ async function init(){
   ui.colorMode('dvs');
   ui.dataBody(dataSourcesHTML(DATA_GROUPS));
   ui.reflectDials(dialNorms());
+  if(karst) ui.caveList(karst.pins.filter(p=>p.cave.model).map(p=>(
+    {model:p.cave.model, name:p.cave.name, country:p.cave.country, depthM:p.cave.depth_m, lengthKm:p.cave.len_km})));
   let seen=false; try{ seen=!!localStorage.getItem('terrascan_seen'); }catch(e){}
   if(!seen) ui.guide(true); // show the intro once; the ⓘ button reopens it
 
@@ -308,6 +310,8 @@ const handlers={
     else if(name==='foot'){ state.showFoot=v; structures.footGroup.visible=v; }
     else if(name==='exp'){ state.showExp=v; expObj.group.visible=v; }
     else if(name==='karst'){ state.showKarst=v; if(karst) karst.group.visible=v; }
+    else if(name==='caves'){ state.showCaves=v; if(karst) karst.setCaves(v); }     // plain caves
+    else if(name==='scans'){ state.showScans=v; if(karst) karst.setScans(v); }     // caves with a 3-D survey
     else if(name==='scan'){ state.showScan=v; scan.mesh.visible=v; }
     else if(name==='infer'){ state.showInfer=v; scan.setInfer(v?1:0); }
     else if(name==='theory') state.showTheory=v;
@@ -340,6 +344,8 @@ const handlers={
   onTourStop:()=>stopTour(),
   onExitFocus:()=>{ if(modelFocus) exitModelFocus(); else exitFocus(); },
   onDetailClose:()=>{ ui.detail(null); detailTarget=null; },
+  onCaveGoto:(model)=>{ const p=karst&&karst.pins.find(x=>x.cave.model===model); if(!p) return;
+    flyToSurface(p.cave.lat, p.cave.lon, 1.85); openDetail('cave', p.cave); },
   onDetailAction:()=>{ if(!detailTarget) return; const {kind,obj}=detailTarget; detailTarget=null;
     if(kind==='cave' && obj.model) enterCaveFocus(obj);
     else if(kind==='exp' && obj.model) enterExpFocus(obj); },
@@ -729,7 +735,7 @@ function animate(){
 
   theoryShells.userData.tick(t);
   controls.update();
-  fadeMarkers();
+  fadeMarkers(t);
 
   // Where the scan resolves the Earth, the model recedes to a faint haze behind it.
   // Where coverage collapses (the deep core), the blurry estimate brightens to take over.
@@ -742,8 +748,8 @@ function animate(){
 }
 
 // fade + LOD: scale markers to ~constant screen size and reveal labels by zoom level
-const _c=new THREE.Vector3(), _cp=new THREE.Vector3();
-function fadeMarkers(){
+const _c=new THREE.Vector3(), _cp=new THREE.Vector3(), _pv=new THREE.Vector3();
+function fadeMarkers(t){
   camera.getWorldPosition(_cp); _c.copy(_cp).normalize();
   const zoom=_cp.length();
   if(markerGroup.visible) for(const m of markers){
@@ -763,7 +769,36 @@ function fadeMarkers(){
     m.label.visible=showL;
     if(showL){ m.label.scale.set(m.labelBase.x*f, m.labelBase.y*f, 1); m.labelMat.opacity=o; }
   }
-  if(karst && karst.group.visible) karst.fade(_c, _cp, zoom);
+  if(karst && karst.group.visible) karst.fade(_c, _cp, zoom, t);
+  declutterLabels();
+}
+// screen-space declutter: keep labels by priority then proximity; hide ones that collide
+function declutterLabels(){
+  const W=container.clientWidth, H=container.clientHeight, cands=[];
+  const collect=(label, pos, pri, groupVisible)=>{
+    if(!groupVisible || !label || !label.visible) return;
+    _pv.copy(pos).project(camera);
+    if(_pv.z>1){ label.visible=false; return; }            // off the front of the globe
+    cands.push({label, sx:(_pv.x*0.5+0.5)*W, sy:(-_pv.y*0.5+0.5)*H, pri, d:_cp.distanceTo(pos)});
+  };
+  if(markerGroup.visible) for(const m of markers){ if(m.visible) collect(m.label, m.dot.position, m.priority||1, true); }
+  if(expObj && expObj.group.visible) for(const m of expObj.pins) collect(m.label, m.dot.position, 2, true);
+  if(karst && karst.group.visible) for(const p of karst.pins)
+    collect(p.label, p.dot.position, p.priority, p.isModel?karst.scanGroup.visible:karst.caveGroup.visible);
+  cands.sort((a,b)=> (a.pri-b.pri) || (a.d-b.d));
+  const kept=[], MINX=108, MINY=21;
+  for(const c of cands){
+    let ok=true;
+    for(const k of kept){ if(Math.abs(c.sx-k.sx)<MINX && Math.abs(c.sy-k.sy)<MINY){ ok=false; break; } }
+    if(ok) kept.push(c); else c.label.visible=false;
+  }
+}
+// orbit the camera so a given surface point faces it (used by the cave launcher)
+function flyToSurface(lat, lon, dist=1.95){
+  stopTour(); stopDive();
+  glideTarget=new THREE.Vector3(0,0,0);
+  glideCam=latLonToVec3(lat, lon, dist);
+  controls.autoRotate=false;
 }
 
 // ---------- misc ----------
@@ -790,14 +825,14 @@ function fail(msg){
 const TOGGLE_MAP = {
   struct:'showStruct', bodies:'showBodies', scan:'showScan', infer:'showInfer', theory:'showTheory',
   relief:'showRelief', coast:'showCoast', borders:'showBorders', markers:'showMarkers',
-  foot:'showFoot', exp:'showExp', karst:'showKarst', spin:'spin', drill:'drillNav', cutaway:'cutaway',
-  peel:'reliefPeel',
+  foot:'showFoot', exp:'showExp', karst:'showKarst', caves:'showCaves', scans:'showScans',
+  spin:'spin', drill:'drillNav', cutaway:'cutaway', peel:'reliefPeel',
 };
 const TOGGLE_DOM = {  // checkbox id per toggle name (note #t-cut, not #t-cutaway)
   struct:'#t-struct', bodies:'#t-bodies', scan:'#t-scan', infer:'#t-infer', theory:'#t-theory',
   relief:'#t-relief', coast:'#t-coast', borders:'#t-borders', markers:'#t-markers',
-  foot:'#t-foot', exp:'#t-exp', karst:'#t-karst', spin:'#t-spin', drill:'#t-drill', cutaway:'#t-cut',
-  peel:'#t-peel',
+  foot:'#t-foot', exp:'#t-exp', karst:'#t-karst', caves:'#t-caves', scans:'#t-scans',
+  spin:'#t-spin', drill:'#t-drill', cutaway:'#t-cut', peel:'#t-peel',
 };
 
 function captureSettings(){

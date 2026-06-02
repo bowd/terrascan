@@ -23,7 +23,8 @@ export function initControls(h){
   const tog=(id,name)=>{ const e=$(id); if(e) e.addEventListener('change',ev=>h.onToggle(name,ev.target.checked)); };
   tog('#t-struct','struct'); tog('#t-bodies','bodies'); tog('#t-scan','scan'); tog('#t-infer','infer'); tog('#t-theory','theory');
   tog('#t-relief','relief'); tog('#t-coast','coast'); tog('#t-borders','borders');
-  tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-exp','exp'); tog('#t-karst','karst'); tog('#t-spin','spin'); tog('#t-drill','drill');
+  tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-exp','exp'); tog('#t-karst','karst');
+  tog('#t-caves','caves'); tog('#t-scans','scans'); tog('#t-spin','spin'); tog('#t-drill','drill');
   tog('#t-cut','cutaway'); tog('#t-normalize','normalize'); tog('#t-peel','peel');
 
   // data pipeline — model inputs, clustering, viz strategy
@@ -84,6 +85,14 @@ export function initControls(h){
   $('#glossary-close').addEventListener('click',()=>gloss.classList.add('hidden'));
   gloss.addEventListener('click',e=>{if(e.target===gloss)gloss.classList.add('hidden');});
 
+  // caves launcher modal (jump straight to a surveyed cave)
+  const cavesModal=$('#caves');
+  if(cavesModal){
+    $('#caves-btn').addEventListener('click',()=>cavesModal.classList.remove('hidden'));
+    $('#caves-close').addEventListener('click',()=>cavesModal.classList.add('hidden'));
+    cavesModal.addEventListener('click',e=>{if(e.target===cavesModal)cavesModal.classList.add('hidden');});
+  }
+
   // presets modal
   const presetsModal=$('#presets');
   if(presetsModal){
@@ -128,6 +137,21 @@ export function initControls(h){
       $('#depth-note').textContent='“'+stop.label+'” — '+stop.blurb;
     },
     dataBody(html){ $('#data-body').innerHTML=html; },
+    caveList(items){
+      const el=$('#cave-list'); if(!el) return;
+      const groups={};
+      for(const it of (items||[])){ (groups[it.country||'—']=groups[it.country||'—']||[]).push(it); }
+      el.innerHTML=Object.entries(groups).map(([region,rows])=>
+        `<div class="cave-grp">${region}</div>`+rows.map(r=>
+          `<button class="cave-row" data-model="${r.model}">`+
+          `<span class="cave-nm">${r.name.replace(/</g,'&lt;')}</span>`+
+          `<span class="cave-meta">${[r.lengthKm?r.lengthKm+' km':'', r.depthM?r.depthM+' m':''].filter(Boolean).join(' · ')}</span>`+
+          `</button>`).join('')).join('');
+      el.querySelectorAll('.cave-row').forEach(b=>b.addEventListener('click',()=>{
+        const cm=$('#caves'); if(cm) cm.classList.add('hidden');
+        h.onCaveGoto&&h.onCaveGoto(b.dataset.model);
+      }));
+    },
     know(text){ $('#know').textContent=text; },
     sourceNote(t){ $('#scan-source-note').textContent=t; },
     drillStatus(t){ const e=$('#drill-status'); if(e){ e.textContent=t||''; e.classList.toggle('on', !!t); } },

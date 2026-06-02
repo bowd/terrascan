@@ -13,10 +13,6 @@ import * as THREE from 'three';
 import { latLonToVec3 } from './geo.js';
 import { lodScale, labelShown } from './markerlod.js';
 
-// unit circle (XY plane) for the model-cave ring; positioned + scaled per marker
-function ringGeo(){ const v=[]; const N=48; for(let i=0;i<N;i++){ const a=i/N*Math.PI*2; v.push(Math.cos(a),Math.sin(a),0); }
-  const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v,3)); return g; }
-
 const D2R = Math.PI/180;
 
 // radii just above the 1.0 surface so karst sits on the skin, over coast/borders
@@ -62,8 +58,12 @@ function makeLabel(text, hexColor){
 
 export function makeKarst(data){
   const group=new THREE.Group(); group.renderOrder=6;
+  // three independently-toggleable sub-layers
+  const regionGroup=new THREE.Group(); regionGroup.renderOrder=5; group.add(regionGroup);  // belts
+  const caveGroup=new THREE.Group();   caveGroup.renderOrder=7;   group.add(caveGroup);    // plain caves
+  const scanGroup=new THREE.Group();   scanGroup.renderOrder=7;   group.add(scanGroup);    // caves with a 3-D scan
   const regions=[];     // {centre, fillMat, lineMat}
-  const pins=[];        // {cave, dot, label, dotMat, labelMat, centre}
+  const pins=[];        // {cave, dot, label, dotMat, labelMat, centre, …}
   const pickDots=[];
 
   const D = data || {};
@@ -89,7 +89,7 @@ export function makeKarst(data){
     fg.setAttribute('position', new THREE.Float32BufferAttribute(fv,3));
     const fillMat=new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:FILL_OP,
       depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide});
-    const fill=new THREE.Mesh(fg, fillMat); fill.renderOrder=4.5; group.add(fill);
+    const fill=new THREE.Mesh(fg, fillMat); fill.renderOrder=4.5; regionGroup.add(fill);
 
     // outline: densify each edge along the sphere so the belt curves cleanly
     const lv=[]; const STEPS=10;
@@ -106,49 +106,54 @@ export function makeKarst(data){
     lg.setAttribute('position', new THREE.Float32BufferAttribute(lv,3));
     const lineMat=new THREE.LineBasicMaterial({color:col, transparent:true, opacity:LINE_OP,
       depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending});
-    const line=new THREE.LineSegments(lg, lineMat); line.renderOrder=5.4; group.add(line);
+    const line=new THREE.LineSegments(lg, lineMat); line.renderOrder=5.4; regionGroup.add(line);
 
     regions.push({centre, fillMat, lineMat});
   }
 
   // ---- mapped caves: dots sized by magnitude, tinted by flooded/dry/deep --------
   const DOT=new THREE.SphereGeometry(1, 12, 12);
-  const RING=ringGeo();
+  const TORUS=new THREE.TorusGeometry(1, 0.17, 8, 40);   // a real (thick) ring for scanned caves
   for(const c of CAV){
     if(typeof c.lat!=='number' || typeof c.lon!=='number') continue;
+    const isModel=!!c.model;
+    const tgt = isModel ? scanGroup : caveGroup;
     const b=bucket(c), col=CAVE_COL[b];
     const hex='#'+col.toString(16).padStart(6,'0');
     const centre=latLonToVec3(c.lat, c.lon, 1).normalize();
     const pos=latLonToVec3(c.lat, c.lon, R_DOT);
-    const rad=0.006 + 0.012*Math.sqrt(weight(c));
+    let rad=0.006 + 0.012*Math.sqrt(weight(c));
+    if(isModel) rad=Math.max(rad, 0.014)*1.3;             // scanned caves clearly bolder
     const dotMat=new THREE.MeshBasicMaterial({color:col, transparent:true,
       depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending});
     const dot=new THREE.Mesh(DOT, dotMat);
     dot.position.copy(pos); dot.scale.setScalar(rad); dot.renderOrder=7.5;
     dot.userData={cave:c};
-    group.add(dot); pickDots.push(dot);
+    tgt.add(dot); pickDots.push(dot);
 
-    // every cave gets a label; LOD reveals it as you zoom in (declutter when out)
+    // every cave gets a label; LOD + screen-space declutter decide when to show it
     const label=makeLabel(SHORT(c.name), hex);
     label.position.copy(pos).addScaledVector(centre, 0.05); label.renderOrder=8.5; label.visible=false;
-    group.add(label);
+    tgt.add(label);
     const labelBase=label.scale.clone(), labelMat=label.material;
-    const priority = c.model ? 3 : (c.label ? 2 : 4);   // model surveys reveal earlier than minor dots
+    const priority = (isModel || c.label) ? 2 : 4;        // scanned + marquee caves are headline
 
-    // caves with a real 3-D survey get a ring — a "click to enter" affordance (scalable)
+    // scanned caves get a bold, pulsing ring — the "fly into the survey" affordance
     let ringMat=null, ring=null, ringBase=0;
-    if(c.model){
-      ring=new THREE.LineLoop(RING, new THREE.LineBasicMaterial({color:col, transparent:true, opacity:0.85,
+    if(isModel){
+      const ringCol=(b==='deep')?0xe6c2ff:col;             // lift the violet so it reads on blue relief
+      ring=new THREE.Mesh(TORUS, new THREE.MeshBasicMaterial({color:ringCol, transparent:true, opacity:0.95,
         depthTest:false, depthWrite:false, blending:THREE.AdditiveBlending}));
       ring.position.copy(pos); ring.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), centre);
-      ringBase=Math.max(0.02, rad*2.6); ring.scale.setScalar(ringBase); ring.renderOrder=7.6;
-      group.add(ring); ringMat=ring.material;
+      ringBase=Math.max(0.05, rad*3.8); ring.scale.setScalar(ringBase); ring.renderOrder=7.6;
+      scanGroup.add(ring); ringMat=ring.material;
     }
-    pins.push({cave:c, dot, label, dotMat, labelMat, ring, ringMat, centre, baseRad:rad, labelBase, ringBase, priority});
+    pins.push({cave:c, dot, label, dotMat, labelMat, ring, ringMat, centre, baseRad:rad, labelBase, ringBase, priority, isModel});
   }
 
-  // hemisphere fade: hide what's on the back of the globe (called from the render loop)
-  function fade(camDirNorm, camPos, zoom){
+  // hemisphere fade + LOD + ring pulse (final label visibility is set by declutter() in main)
+  function fade(camDirNorm, camPos, zoom, t){
+    const pulse = 0.62 + 0.38*Math.sin((t||0)*3.2);
     for(const p of pins){
       const distM = camPos ? camPos.distanceTo(p.dot.position) : 2.6;
       const sf = lodScale(distM);
@@ -156,12 +161,11 @@ export function makeKarst(data){
       const o=THREE.MathUtils.smoothstep(facing, -0.05, 0.35);
       p.dot.scale.setScalar(p.baseRad * sf);                 // ~constant screen size
       p.dotMat.opacity=Math.max(o*0.95, 0.10);
-      if(p.ring){ p.ring.scale.setScalar(p.ringBase * sf); p.ringMat.opacity=o*0.8; }
-      if(p.label){
-        const show = o>0.05 && labelShown(p.priority, zoom||3.1);
-        p.label.visible=show;
-        if(show){ p.label.scale.set(p.labelBase.x*sf, p.labelBase.y*sf, 1); p.labelMat.opacity=o; }
-      }
+      if(p.ring){ p.ring.scale.setScalar(p.ringBase * sf * (0.92+0.13*pulse)); p.ringMat.opacity=o*(0.6+0.4*pulse); }
+      // tentative: LOD + facing. declutter() may switch some labels back off this frame.
+      const show = o>0.05 && labelShown(p.priority, zoom||3.1);
+      p.label.visible=show;
+      if(show){ p.label.scale.set(p.labelBase.x*sf, p.labelBase.y*sf, 1); p.labelMat.opacity=o; }
     }
     for(const r of regions){
       const f=r.centre.dot(camDirNorm);
@@ -170,6 +174,8 @@ export function makeKarst(data){
       r.lineMat.opacity=LINE_OP*o;
     }
   }
+  function setCaves(v){ caveGroup.visible=v; }
+  function setScans(v){ scanGroup.visible=v; }
 
   // tooltip markup for a cave (matches the experiment-pin tooltip style)
   function infoHTML(c){
@@ -184,5 +190,5 @@ export function makeKarst(data){
       `<br>${c.model?'click to fly into the 3-D survey ↘':'click to look it up ↗'}</span>`;
   }
 
-  return { group, pins, pickDots, regions, fade, infoHTML };
+  return { group, regionGroup, caveGroup, scanGroup, pins, pickDots, regions, fade, infoHTML, setCaves, setScans };
 }

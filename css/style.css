@@ -395,3 +395,14 @@ body.focusing .hud-right{opacity:0;pointer-events:none;transition:opacity .25s}
 .detail-actions{display:flex; gap:8px; align-items:center}
 .detail-actions .btn{flex:0 1 auto; text-decoration:none; text-align:center}
 .detail-actions .btn.hidden{display:none}
+
+/* ---------- cave-survey launcher list ---------- */
+.cave-list{display:flex; flex-direction:column; gap:3px; margin-top:10px; max-height:54vh; overflow:auto; padding-right:4px}
+.cave-grp{font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--cyan); margin:11px 0 3px; opacity:.85}
+.cave-grp:first-child{margin-top:0}
+.cave-row{display:flex; align-items:baseline; justify-content:space-between; gap:12px; width:100%;
+  background:rgba(255,255,255,.025); border:1px solid var(--stroke); border-radius:8px;
+  padding:8px 11px; cursor:pointer; text-align:left; transition:background .12s,border-color .12s}
+.cave-row:hover{background:rgba(199,146,255,.14); border-color:rgba(199,146,255,.5)}
+.cave-nm{font-size:12.5px; color:#eaf3ff}
+.cave-meta{font-family:var(--mono); font-size:10px; color:var(--faint); white-space:nowrap}

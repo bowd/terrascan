@@ -42,6 +42,7 @@
         <button id="guide-btn" class="btn">ⓘ Guide</button>
         <button id="glossary-btn" class="btn">▦ Glossary</button>
         <button id="data-btn" class="btn">✦ Data</button>
+        <button id="caves-btn" class="btn">⛏ Caves</button>
         <button id="presets-btn" class="btn">★ Presets</button>
       </div>
       <a class="gh-link" href="https://github.com/bowd/terrascan" target="_blank" rel="noopener noreferrer">★ Open source on GitHub ↗</a>
@@ -79,6 +80,8 @@
         <label class="toggle"><input type="checkbox" id="t-foot" /><span>Footprints</span></label>
         <label class="toggle"><input type="checkbox" id="t-exp" /><span>Experiments</span></label>
         <label class="toggle"><input type="checkbox" id="t-karst" checked /><span>Karst &amp; caves</span></label>
+        <label class="toggle"><input type="checkbox" id="t-caves" checked /><span>Caves</span></label>
+        <label class="toggle"><input type="checkbox" id="t-scans" checked /><span>Cave scans</span></label>
         <label class="toggle"><input type="checkbox" id="t-spin" checked /><span>Spin</span></label>
         <label class="toggle"><input type="checkbox" id="t-drill" /><span>Drill-zoom <em>exp</em></span></label>
         <label class="toggle"><input type="checkbox" id="t-cut" /><span>Cutaway (drop above)</span></label>
@@ -266,6 +269,17 @@
         </ul>
         <p class="gloss-karst-foot">Dots are real surveyed systems; their size encodes length or depth. <b>Hover</b> for stats &amp; source; <b>click</b> to look a system up. Belts &amp; cave figures: WOKAM (Goldscheider et al. 2020), the UIS/Bob Gulden long- &amp; deep-cave lists, and the underwater-cave literature — current to 2025–26.</p>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== Cave-survey launcher ===== -->
+  <div id="caves" class="modal-wrap hidden">
+    <div class="modal">
+      <button id="caves-close" class="modal-close">✕</button>
+      <span class="kicker">REAL 3-D CAVE SURVEYS</span>
+      <h2>Fly to a surveyed cave</h2>
+      <p>These caves carry real survey data — pick one to swing the globe to it and open its panel, then <b>descend</b> into the actual passages. (They also appear as pulsing rings on the globe in the <em>Cave scans</em> layer.)</p>
+      <div id="cave-list" class="cave-list"></div>
     </div>
   </div>
 
