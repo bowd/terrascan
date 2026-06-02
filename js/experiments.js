@@ -11,38 +11,42 @@ export const EXP_KIND = {
     note:'antineutrinos from U/Th decay → radiogenic-heat budget (bulk, crust-dominated)'},
 };
 
+// `model` describes a procedural 3-D target the app can render on "zoom to target":
+//   pyramid (Khufu, with the muon-found Big Void), volcano (cone+conduit+chamber),
+//   sphere (an underground scintillator detector + cavern), icecube (the in-ice array),
+//   building (reactor halls). Dimensions are approximate, illustrative.
 export const EXPERIMENTS = [
   // --- muography: shallow, local ---
   {name:'Sakurajima', kind:'muography', lat:31.59, lon:130.66, year:'2010s',
     reveals:'density inside an active volcano', reach:'shallow · the edifice (~km)',
-    src:'https://www.muographix.utokyo.ac.jp/'},
+    src:'https://www.muographix.utokyo.ac.jp/', model:{type:'volcano', h:1100, r:1700}},
   {name:'Vesuvius (MURAVES)', kind:'muography', lat:40.82, lon:14.43, year:'2020s',
     reveals:'internal density of the cone', reach:'shallow · ~km',
-    src:'https://www.muographix.utokyo.ac.jp/'},
+    src:'https://www.muographix.utokyo.ac.jp/', model:{type:'volcano', h:1280, r:2200}},
   {name:'Mt Etna', kind:'muography', lat:37.75, lon:14.99, year:'2010s',
     reveals:'shallow conduit & summit density', reach:'shallow · ~km',
-    src:'https://www.muographix.utokyo.ac.jp/'},
+    src:'https://www.muographix.utokyo.ac.jp/', model:{type:'volcano', h:1700, r:3200}},
   {name:'Khufu Pyramid (ScanPyramids)', kind:'muography', lat:29.979, lon:31.134, year:'2017 & 2023',
     reveals:"the 'Big Void' above the Grand Gallery", reach:'structure-scale (~100 m)',
-    src:'https://doi.org/10.1038/nature24647'},
+    src:'https://doi.org/10.1038/nature24647', model:{type:'pyramid'}},
   {name:'Fukushima Daiichi', kind:'muography', lat:37.42, lon:141.03, year:'2015+',
     reveals:'fuel/debris inside the reactor cores', reach:'building-scale',
-    src:'https://www.muographix.utokyo.ac.jp/'},
+    src:'https://www.muographix.utokyo.ac.jp/', model:{type:'building'}},
   // --- neutrino tomography: deep, bulk ---
   {name:'IceCube (South Pole)', kind:'neutrino', lat:-89.5, lon:0, year:'2019 · 2025',
     reveals:"Earth's bulk & CORE density via neutrino absorption", reach:'DEEP · core + lower mantle (bulk, ~25%)',
-    src:'https://doi.org/10.1038/s41567-018-0319-1'},
+    src:'https://doi.org/10.1038/s41567-018-0319-1', model:{type:'icecube'}},
   // --- geoneutrinos: whole-Earth radiogenic heat ---
   {name:'KamLAND', kind:'geoneutrino', lat:36.43, lon:137.31, year:'2005+',
     reveals:'radiogenic heat (U/Th)', reach:'whole-Earth (crust-dominated)',
-    src:'https://kamland.stanford.edu/'},
+    src:'https://kamland.stanford.edu/', model:{type:'sphere', r:6.5, depth:1000}},
   {name:'Borexino (Gran Sasso)', kind:'geoneutrino', lat:42.45, lon:13.57, year:'2010+',
     reveals:'radiogenic heat — thin-crust site (cleaner mantle term)', reach:'whole-Earth',
-    src:'https://borex.lngs.infn.it/'},
+    src:'https://borex.lngs.infn.it/', model:{type:'sphere', r:4.25, depth:1400}},
   {name:'SNO+ (Sudbury)', kind:'geoneutrino', lat:46.47, lon:-81.19, year:'2025',
     reveals:'radiogenic heat — first Western-Hemisphere result', reach:'whole-Earth',
-    src:'https://snoplus.phy.queensu.ca/'},
+    src:'https://snoplus.phy.queensu.ca/', model:{type:'sphere', r:6, depth:2070}},
   {name:'JUNO (Jiangmen)', kind:'geoneutrino', lat:22.12, lon:112.52, year:'2025+',
     reveals:'radiogenic heat — high-statistics (upcoming)', reach:'whole-Earth',
-    src:'https://juno.ihep.cas.cn/'},
+    src:'https://juno.ihep.cas.cn/', model:{type:'sphere', r:17.7, depth:700}},
 ];

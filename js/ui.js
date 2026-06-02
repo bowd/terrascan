@@ -58,6 +58,12 @@ export function initControls(h){
   $('#tour-stop').addEventListener('click',h.onTourStop);
   $('#focus-back').addEventListener('click',h.onExitFocus);
 
+  // click-to-inspect detail panel (caves + experiments)
+  if($('#detail')){
+    $('#detail-close').addEventListener('click',()=>h.onDetailClose&&h.onDetailClose());
+    $('#detail-action').addEventListener('click',()=>h.onDetailAction&&h.onDetailAction());
+  }
+
   // presets — save the current config under a typed name (empty → auto-named)
   const presetName=$('#preset-name'), presetSave=$('#preset-save');
   const doSave=()=>{ if(!h.onPresetSave) return; h.onPresetSave((presetName&&presetName.value)||''); if(presetName) presetName.value=''; };
@@ -184,19 +190,35 @@ export function initControls(h){
       el.style.top=Math.min(window.innerHeight-80, y+15)+'px';
       el.classList.remove('hidden');
     },
-    caveCard(info){
+    modelCard(info){
       const el=$('#focus');
       if(!info){ el.classList.add('hidden'); return; }
-      $('#focus-type').textContent='CAVE SURVEY · real data';
-      $('#focus-name').textContent=info.name;
-      $('#focus-meaning').textContent='Actual surveyed passages — the walls are measured LRUD cross-sections, blown up and pinned at the cave entrance. '+(info.country||'');
+      $('#focus-type').textContent=info.type||'';
+      $('#focus-name').textContent=info.name||'';
+      $('#focus-meaning').textContent=info.desc||'';
       const labels=el.querySelectorAll('.focus-rows span');
-      if(labels[0]) labels[0].textContent='depth'; if(labels[1]) labels[1].textContent='surveyed';
-      $('#focus-depth').textContent=(info.depthM!=null?info.depthM+' m':'—');
-      $('#focus-anom').textContent=(info.lengthKm!=null?info.lengthKm+' km':'—');
+      if(labels[0]) labels[0].textContent=(info.rows&&info.rows[0]&&info.rows[0][0])||'';
+      if(labels[1]) labels[1].textContent=(info.rows&&info.rows[1]&&info.rows[1][0])||'';
+      $('#focus-depth').textContent=(info.rows&&info.rows[0]&&info.rows[0][1])||'—';
+      $('#focus-anom').textContent=(info.rows&&info.rows[1]&&info.rows[1][1])||'—';
       $('#focus-src').textContent=info.source||'—';
       const hint=el.querySelector('.focus-hint');
-      if(hint) hint.textContent='real cave survey · exaggerated & pinned at its entrance · drag to orbit · Esc or “back” to return';
+      if(hint) hint.textContent='exaggerated & pinned at the real site · drag to orbit · Esc or “back” to return';
+      el.classList.remove('hidden');
+    },
+    detail(info){
+      const el=$('#detail'); if(!el) return;
+      if(!info){ el.classList.add('hidden'); return; }
+      $('#detail-kicker').textContent=info.kicker||'';
+      $('#detail-name').textContent=info.name||'';
+      $('#detail-desc').textContent=info.desc||'';
+      $('#detail-rows').innerHTML=(info.rows||[]).map(r=>`<div><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
+      const link=$('#detail-link');
+      if(info.linkUrl){ link.href=info.linkUrl; link.textContent=info.linkLabel||'source ↗'; link.classList.remove('hidden'); }
+      else link.classList.add('hidden');
+      const act=$('#detail-action');
+      if(info.actionLabel){ act.textContent=info.actionLabel; act.classList.remove('hidden'); }
+      else act.classList.add('hidden');
       el.classList.remove('hidden');
     },
     focusPanel(f){

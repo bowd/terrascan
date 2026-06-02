@@ -377,3 +377,21 @@ body.focusing .hud-right{opacity:0;pointer-events:none;transition:opacity .25s}
 .gloss-karst-key b{color:#eaf3ff;font-weight:600}
 .gloss-karst-foot{font-size:10.5px;line-height:1.5;color:var(--faint);font-style:italic;margin:11px 0 0}
 .gloss-karst-foot b{color:var(--dim);font-style:normal}
+
+/* ---------- click-to-inspect detail panel (caves + experiments) ---------- */
+.detail-card{position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:24;
+  width:344px; max-width:calc(100vw - 32px); background:rgba(10,16,26,.93); border:1px solid var(--stroke);
+  border-radius:12px; padding:15px 18px 16px; backdrop-filter:blur(9px); box-shadow:0 10px 44px rgba(0,0,0,.55);}
+.detail-card.hidden{display:none}
+.detail-x{position:absolute; top:7px; right:10px; background:none; border:none; color:var(--dim); cursor:pointer; font-size:13px; line-height:1}
+.detail-card .kicker{display:block; margin-bottom:5px; font-family:var(--mono); font-size:10px; letter-spacing:.16em; color:var(--cyan)}
+.detail-card h3{margin:0 0 6px; font-size:16px; color:#eaf3ff; font-weight:600}
+.detail-card>p{font-size:11.5px; line-height:1.5; color:var(--dim); margin:0 0 11px}
+.detail-rows{display:flex; gap:20px; margin-bottom:13px}
+.detail-rows:empty{display:none}
+.detail-rows div{display:flex; flex-direction:column; gap:2px}
+.detail-rows span{font-family:var(--mono); font-size:9px; color:var(--faint); text-transform:uppercase; letter-spacing:.12em}
+.detail-rows b{font-size:14px; color:#eaf3ff; font-weight:600}
+.detail-actions{display:flex; gap:8px; align-items:center}
+.detail-actions .btn{flex:0 1 auto; text-decoration:none; text-align:center}
+.detail-actions .btn.hidden{display:none}
