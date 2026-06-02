@@ -23,7 +23,7 @@ export function initControls(h){
   const tog=(id,name)=>{ const e=$(id); if(e) e.addEventListener('change',ev=>h.onToggle(name,ev.target.checked)); };
   tog('#t-struct','struct'); tog('#t-bodies','bodies'); tog('#t-scan','scan'); tog('#t-infer','infer'); tog('#t-theory','theory');
   tog('#t-relief','relief'); tog('#t-coast','coast'); tog('#t-borders','borders');
-  tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-exp','exp'); tog('#t-spin','spin'); tog('#t-drill','drill');
+  tog('#t-markers','markers'); tog('#t-foot','foot'); tog('#t-exp','exp'); tog('#t-karst','karst'); tog('#t-spin','spin'); tog('#t-drill','drill');
   tog('#t-cut','cutaway'); tog('#t-normalize','normalize'); tog('#t-peel','peel');
 
   // data pipeline — model inputs, clustering, viz strategy

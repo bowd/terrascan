@@ -364,3 +364,16 @@ body.focusing .hud-right{opacity:0;pointer-events:none;transition:opacity .25s}
   .guide-two{grid-template-columns:1fr}
 }
 @media (max-height:760px){ .hud{overflow-y:auto;overflow-x:hidden} }   /* fallback only on short screens */
+
+/* ---------- glossary: karst & caves section ---------- */
+.gloss-karst{margin-top:18px;padding-top:16px;border-top:1px solid var(--stroke)}
+.gloss-karst .kicker{display:block;margin-bottom:6px}
+.gloss-karst h3{margin:0 0 6px;font-size:15px;color:#eaf3ff;font-weight:600}
+.gloss-karst>p{font-size:11.5px;line-height:1.5;color:var(--dim);margin:0 0 11px}
+.gloss-karst>p em{font-style:italic;color:#cdd8ea}
+.gloss-karst-key{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+.gloss-karst-key li{font-size:11.5px;line-height:1.5;color:var(--txt);position:relative;padding-left:20px}
+.gloss-karst-key li .sw{position:absolute;left:0;top:4px;margin:0}
+.gloss-karst-key b{color:#eaf3ff;font-weight:600}
+.gloss-karst-foot{font-size:10.5px;line-height:1.5;color:var(--faint);font-style:italic;margin:11px 0 0}
+.gloss-karst-foot b{color:var(--dim);font-style:normal}

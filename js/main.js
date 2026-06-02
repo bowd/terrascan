@@ -8,6 +8,7 @@ import { makeScanField, activeFeatures, dominantFeatures, TYPE_INFO } from './to
 import { loadGeo, rasterizeLand, buildCoastlines, buildGraticule, latLonToVec3 } from './geo.js';
 import { makeTheoryShells, makeScanShell } from './shells.js';
 import { makeStructures } from './structures.js';
+import { makeKarst } from './karst.js';
 import { makeReliefEarth } from './surface.js';
 import { makePipeline } from './postfx.js';
 import { initControls } from './ui.js';
@@ -61,7 +62,7 @@ theoryScene.add(theoryShells);
 const state={
   depth:0, mode:0, gain:1.0, scanOpacity:0.58, blur:0.62, reliefOpacity:0.72,
   showStruct:true, showBodies:true, showScan:true, showInfer:true, showTheory:true, showRelief:true, showCoast:true,
-  showBorders:false, showMarkers:true, showFoot:false, showExp:false, spin:true,
+  showBorders:false, showMarkers:true, showFoot:false, showExp:false, showKarst:true, spin:true,
   diving:false, touring:false, contextLost:false, focused:null, focusBlend:0.4, source:'real', drillNav:false, cutaway:false, reliefPeel:true,
 };
 // drill-zoom navigation "tape": waypoints of {orbit target, camera position}
@@ -173,6 +174,7 @@ function applyPeel(){                                     // peel: bring the sur
   if(dataBodies) dataBodies.group.visible  = state.showBodies;   // measured data bodies (independent layer)
   if(coastObj) coastObj.visible   = state.showCoast;
   if(gratObj)  gratObj.visible    = state.showCoast;
+  if(karst)    karst.group.visible= state.showKarst;
 }
 function applyCutaway(){                                  // drop everything shallower than the current depth
   const on=state.cutaway;
@@ -182,9 +184,10 @@ function applyCutaway(){                                  // drop everything sha
   coastObj && (coastObj.visible = on ? false : state.showCoast);
   gratObj  && (gratObj.visible  = on ? false : state.showCoast);
   bordersObj && (bordersObj.visible = on ? false : state.showBorders);
+  karst && (karst.group.visible = on ? false : state.showKarst);       // karst rides the surface → above the cut
 }
 
-let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj, expObj, dataBodies;
+let scanField, scan, structures, relief, markers=[], markerGroup, ui, coastObj, gratObj, bordersObj, expObj, dataBodies, karst;
 let earthWire, hovered=null, glideCam=null, glideTarget=null, savedCam=null, savedTarget=null;
 const raycaster=new THREE.Raycaster(), ptr=new THREE.Vector2(); let downPos=null;
 const DOT_GEO=new THREE.SphereGeometry(0.012, 12, 12);
@@ -228,6 +231,13 @@ async function init(){
 
   markerGroup=new THREE.Group();
   scanScene.add(markerGroup);
+
+  // shallowest layer: global karst belts + surveyed caves / flooded systems.
+  // Loaded async and guarded — a missing/short file never blocks boot.
+  try{
+    const kd=await fetch('./data/karst.json').then(r=>r.json());
+    karst=makeKarst(kd); karst.group.visible=state.showKarst; scanScene.add(karst.group); window.__karst=karst;
+  }catch(e){ console.warn('karst load failed', e); }
 
   ui=initControls(handlers);
   ui.colorMode('dvs');
@@ -290,6 +300,7 @@ const handlers={
     else if(name==='bodies'){ state.showBodies=v; if(dataBodies) dataBodies.group.visible=v; }  // measured 3-D data bodies
     else if(name==='foot'){ state.showFoot=v; structures.footGroup.visible=v; }
     else if(name==='exp'){ state.showExp=v; expObj.group.visible=v; }
+    else if(name==='karst'){ state.showKarst=v; if(karst) karst.group.visible=v; }
     else if(name==='scan'){ state.showScan=v; scan.mesh.visible=v; }
     else if(name==='infer'){ state.showInfer=v; scan.setInfer(v?1:0); }
     else if(name==='theory') state.showTheory=v;
@@ -419,6 +430,14 @@ function pickExp(cx,cy){
   const h=raycaster.intersectObjects(expObj.pickDots,false);
   return h.length?h[0].object.userData.exp:null;
 }
+function pickKarst(cx,cy){
+  if(!karst) return null;
+  const r=renderer.domElement.getBoundingClientRect();
+  ptr.set(((cx-r.left)/r.width)*2-1, -((cy-r.top)/r.height)*2+1);
+  raycaster.setFromCamera(ptr,camera);
+  const h=raycaster.intersectObjects(karst.pickDots,false);
+  return h.length?h[0].object.userData.cave:null;
+}
 function expTipHTML(e){
   const k=EXP_KIND[e.kind];
   return `<b>${e.name}</b><span class="tip-type">${k.label}${e.year?' · '+e.year:''}</span>`+
@@ -498,6 +517,8 @@ function initPicking(){
     if(state.focused){ return; }
     const exp=(expObj && expObj.group.visible)?pickExp(e.clientX,e.clientY):null;
     if(exp){ ui.tipHTML(expTipHTML(exp), e.clientX, e.clientY); el.style.cursor='pointer'; structures.setHover(null); structures.setFootHover(null); hovered=null; return; }
+    const kv=(karst && karst.group.visible)?pickKarst(e.clientX,e.clientY):null;
+    if(kv){ ui.tipHTML(karst.infoHTML(kv), e.clientX, e.clientY); el.style.cursor='pointer'; structures.setHover(null); structures.setFootHover(null); hovered=null; return; }
     const f=structures.group.visible?pickAt(e.clientX,e.clientY):null; hovered=f;
     structures.setFootHover(f); structures.setHover(f);
     if(f){ ui.tip(f, e.clientX, e.clientY); el.style.cursor='pointer'; }
@@ -511,6 +532,8 @@ function initPicking(){
     if(state.focused) return;
     const exp=(expObj && expObj.group.visible)?pickExp(e.clientX,e.clientY):null;
     if(exp){ if(exp.src) window.open(exp.src,'_blank','noopener'); return; }
+    const kv=(karst && karst.group.visible)?pickKarst(e.clientX,e.clientY):null;
+    if(kv){ window.open('https://en.wikipedia.org/wiki/Special:Search?search='+encodeURIComponent(kv.name),'_blank','noopener'); return; }
     if(!structures.group.visible) return;
     const f=pickAt(e.clientX,e.clientY); if(f) enterFocus(f);
   });
@@ -643,6 +666,7 @@ function fadeMarkers(){
     const o=THREE.MathUtils.smoothstep(f, -0.05, 0.4);
     m.labelMat.opacity=o; m.dotMat.opacity=Math.max(o*0.9,0.12);
   }
+  if(karst && karst.group.visible) karst.fade(_c);
 }
 
 // ---------- misc ----------
@@ -669,13 +693,13 @@ function fail(msg){
 const TOGGLE_MAP = {
   struct:'showStruct', bodies:'showBodies', scan:'showScan', infer:'showInfer', theory:'showTheory',
   relief:'showRelief', coast:'showCoast', borders:'showBorders', markers:'showMarkers',
-  foot:'showFoot', exp:'showExp', spin:'spin', drill:'drillNav', cutaway:'cutaway',
+  foot:'showFoot', exp:'showExp', karst:'showKarst', spin:'spin', drill:'drillNav', cutaway:'cutaway',
   peel:'reliefPeel',
 };
 const TOGGLE_DOM = {  // checkbox id per toggle name (note #t-cut, not #t-cutaway)
   struct:'#t-struct', bodies:'#t-bodies', scan:'#t-scan', infer:'#t-infer', theory:'#t-theory',
   relief:'#t-relief', coast:'#t-coast', borders:'#t-borders', markers:'#t-markers',
-  foot:'#t-foot', exp:'#t-exp', spin:'#t-spin', drill:'#t-drill', cutaway:'#t-cut',
+  foot:'#t-foot', exp:'#t-exp', karst:'#t-karst', spin:'#t-spin', drill:'#t-drill', cutaway:'#t-cut',
   peel:'#t-peel',
 };
 

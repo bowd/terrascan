@@ -21,6 +21,7 @@ Two layers are composited in 3-D, sharing one camera:
 | **The model** | The smooth, radially-symmetric theoretical reference Earth (PREM). | **Blurry** — rendered to an offscreen buffer and Gaussian-blurred: an *estimation*, not an observation. Where the scan goes blind (the deep core), the estimate brightens to take over. |
 | **3D bodies** | Each feature (slab, plume, hot pile, cratonic keel, ULVZ) interpolated into a translucent, fuzzy-outlined body spanning its real depth range. | Slabs as dipping sheets, plumes as conduits, the two LLSVPs as basal piles. The body at your current depth brightens. **Hover** any body for what it is + its data sources; **click** to isolate it (the orbit pivot flies to its centre, the rest fade, a faint Earth stays for context) — Esc/back to return. |
 | **Relief surface** | A translucent blue-marble Earth with hill-shaded topography (+ optional country borders). | Geographic orientation you can see *through* to the interior — toggle it or fade it with the opacity slider. |
+| **Karst & caves** | The planet's soluble-rock skin: global karst belts (carbonate/evaporite outcrop) plus real, surveyed long / deep / flooded cave systems. | Belts glow faintly by regime (coastal-flooded · alpine · continental) — they stand for the *unmapped frontier*. Dots are the *mapped* systems: **teal** = water-filled (cenotes, blue holes, sumps, springs), **amber** = dry passage, **violet** = depth records — sized by length or depth. Hover for stats & source; click to look one up. |
 | **Theory in gaps** | Where seismic coverage is too thin to resolve, the *expected* field is shown faintly under a diagonal **hatch**. | Makes "no data here — this is the model's guess" explicit, instead of just fading to nothing. |
 
 Each depth also reports its **temperature** (K and °C, flagged as a modelled estimate with a ± and "not measured"), pressure, density, the resolved-coverage %, and a plain "what we know here" note.
@@ -65,6 +66,13 @@ Anderson, 1981). The **lateral anomalies** are a hand-built, geographically-fait
 (the African & Pacific LLSVPs, subducted slabs, plume conduits, cratonic roots —
 cf. S40RTS, SEMUCB-WM1, GyPSuM), not a pixel-exact re-render of any single dataset.
 Treat it as an illustrative map of *what we know is down there*, not a measurement.
+
+The **karst & caves** layer is the one place the app shows *direct* observation rather
+than seismic inference — places humans have physically surveyed. The belts follow the
+[World Karst Aquifer Map](https://www.whymap.org/whymap/EN/Maps_Data/Wokam/wokam_node_en.html)
+(WOKAM; Goldscheider et al. 2020); the cave dots come from the UIS / Bob Gulden long- &
+deep-cave lists and the underwater-cave literature, current to 2025–26. The belts are
+deliberately a coarse wash — a reminder that only a sliver of that rock has ever been mapped.
 
 ## Deploy to GitHub Pages
 
