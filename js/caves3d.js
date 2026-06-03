@@ -21,9 +21,9 @@ export async function makeCaves3d(caveList){
 
   function refresh(){
     for(const cm of models)
-      cm.setEmphasis(focused ? (cm===focused?'focus':'dim') : (cm===hovered?'hover':'normal'));
+      cm.setEmphasis(cm===focused ? 'focus' : cm===hovered ? 'hover' : (focused ? 'dim' : 'normal'));
   }
-  function setHover(cm){ if(focused || cm===hovered) return; hovered=cm; refresh(); }
+  function setHover(cm){ if(cm===hovered) return; hovered=cm; refresh(); }   // works during focus too (for switching)
   function focus(cm){ focused=cm||null; hovered=null; refresh(); }
   function caveOf(proxy){ return models.find(m=>m.pickProxy===proxy); }
   function modelFor(cave){ return models.find(m=>m.cave && m.cave.model===cave.model); }

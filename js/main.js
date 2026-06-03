@@ -79,7 +79,7 @@ const CLUS_RANGE={ threshold:[0.1,1.0], smooth:[0,3], agreeMin:[0,0.9] };
 // velocity-coupled depth band + accelerating dive
 let velEMA=0, prevDepthForVel=0, diveVel=0;
 const DIVE_V0=55, DIVE_ACCEL=150, DIVE_VMAX=900;   // km/s of depth: slow start, accelerating
-const BAND_NARROW=35, BAND_WIDE=640, BAND_VREF=720; // km band width vs descent speed
+const BAND_BASE=2, BAND_PER_KM=0.035, BAND_WIDE=640, BAND_VREF=720; // crisp 2 km at surface → wider with depth (and speed for solid)
 
 // ---------- tunable dials (every magic number, live) ----------
 const DIAL_RANGE={ reliefOpacity:[0,1], reliefBright:[0.6,1.8], coastOpacity:[0,0.9],
@@ -545,16 +545,18 @@ function initPicking(){
   const el=renderer.domElement;
   el.addEventListener('pointerdown',e=>{ downPos={x:e.clientX,y:e.clientY}; });
   el.addEventListener('pointermove',e=>{
-    if(state.focused||modelFocus||caveFocus){ return; }
-    const exp=(expObj && expObj.group.visible)?pickExp(e.clientX,e.clientY):null;
+    if(state.focused||modelFocus){ return; }                 // structure/experiment focus blocks; cave focus does NOT
+    const exp=(!caveFocus && expObj && expObj.group.visible)?pickExp(e.clientX,e.clientY):null;
     const cv=(!exp)?pickCaves3d(e.clientX,e.clientY):null;
-    if(caves3d) caves3d.setHover(cv||null);                  // highlight the hovered cave (or clear)
+    if(caves3d) caves3d.setHover(cv||null);                  // highlight the hovered cave (works in cave focus too)
     if(exp){ ui.tipHTML(expTipHTML(exp), e.clientX, e.clientY); el.style.cursor='pointer'; structures.setHover(null); structures.setFootHover(null); hovered=null; return; }
-    if(cv){ ui.tipHTML(karst.infoHTML(cv.cave), e.clientX, e.clientY); el.style.cursor='pointer'; structures.setHover(null); structures.setFootHover(null); hovered=null; return; }
-    const kv=(karst && karst.group.visible)?pickKarst(e.clientX,e.clientY):null;
-    if(kv){ ui.tipHTML(karst.infoHTML(kv), e.clientX, e.clientY); el.style.cursor='pointer'; structures.setHover(null); structures.setFootHover(null); hovered=null; return; }
+    if(cv){ ui.tipHTML(karst.infoHTML(cv.cave)+(caveFocus?'<br><i>click to jump here</i>':''), e.clientX, e.clientY); el.style.cursor='pointer'; structures.setHover(null); hovered=null; return; }
+    if(!caveFocus){
+      const kv=(karst && karst.group.visible)?pickKarst(e.clientX,e.clientY):null;
+      if(kv){ ui.tipHTML(karst.infoHTML(kv), e.clientX, e.clientY); el.style.cursor='pointer'; structures.setHover(null); structures.setFootHover(null); hovered=null; return; }
+    }
     const f=structures.group.visible?pickAt(e.clientX,e.clientY):null; hovered=f;
-    structures.setFootHover(f); structures.setHover(f);
+    structures.setHover(f); if(!caveFocus) structures.setFootHover(f);
     if(f){ ui.tip(f, e.clientX, e.clientY); el.style.cursor='pointer'; }
     else { ui.tip(null); el.style.cursor=''; }
   });
@@ -563,11 +565,16 @@ function initPicking(){
   tape=[{target:controls.target.clone(), camPos:camera.position.clone()}]; navIdx=0;
   el.addEventListener('click',e=>{
     if(downPos && Math.hypot(e.clientX-downPos.x,e.clientY-downPos.y)>6) return; // was a drag
-    if(state.focused||modelFocus||caveFocus) return;
+    if(state.focused||modelFocus) return;                    // cave focus does NOT block (you can switch)
+    const cv=pickCaves3d(e.clientX,e.clientY);
+    if(cv){ enterCaveFocus(cv.cave); return; }               // enter, or jump to this cave segment
+    if(caveFocus){                                           // in cave mode: click a feature to jump to it
+      const f=structures.group.visible?pickAt(e.clientX,e.clientY):null;
+      if(f){ exitCaveFocus(); enterFocus(f); }
+      return;
+    }
     const exp=(expObj && expObj.group.visible)?pickExp(e.clientX,e.clientY):null;
     if(exp){ openDetail('exp', exp); return; }               // experiments: inspect panel → zoom-to-target
-    const cv=pickCaves3d(e.clientX,e.clientY);
-    if(cv){ enterCaveFocus(cv.cave); return; }               // surveyed cave: straight into the passages
     const kv=(karst && karst.group.visible)?pickKarst(e.clientX,e.clientY):null;
     if(kv){ openDetail('cave', kv); return; }                // plain cave: info panel + external link
     if(!structures.group.visible) return;
@@ -628,31 +635,34 @@ function expDetail(e){
 // the whole scene + every layer stays; we just brighten this cave, dim its siblings,
 // make the surface translucent so the passages read, and glide the camera onto it.
 function enterCaveFocus(cave){
-  if(caveFocus || modelFocus || !caves3d) return;
+  if(modelFocus || !caves3d) return;
   const cm=caves3d.modelFor(cave); if(!cm) return;
+  if(caveFocus && caveFocus.cm===cm) return;                 // already on this segment
+  const switching=!!caveFocus;
   stopTour(); stopDive(); ui.tip(null); ui.detail(null); detailTarget=null;
   caves3d.focus(cm);
-  document.body.classList.add('focusing');
   controls.autoRotate=false;
-  const savedMin=controls.minDistance; controls.minDistance=0.02;
-  // keep every layer present but fade them down so the passages read clearly
-  if(relief) relief.setOpacity(0.14);
-  if(scan) scan.setOpacity(0.09);
-  if(dataBodies) dataBodies.setOpacity(0.12);
-  if(structures) structures.setOpacity(0.10);
-  // hide the marker/label clutter (dots, pins, text) so the cave is the subject
-  const savedVis=[[markerGroup, markerGroup.visible]];
-  if(expObj) savedVis.push([expObj.group, expObj.group.visible]);
-  if(karst) savedVis.push([karst.group, karst.group.visible]);
-  for(const [o] of savedVis) o.visible=false;
-  savedCam=camera.position.clone(); savedTarget=controls.target.clone();
+  if(!switching){
+    document.body.classList.add('focusing');
+    const savedMin=controls.minDistance; controls.minDistance=0.02;
+    // fade the crust + scan slice, but KEEP the extracted features + data bodies
+    // visible (you can still see them) and KEEP the other caves visible (hover to switch)
+    if(relief) relief.setOpacity(0.24);
+    if(scan) scan.setOpacity(0.28);
+    // hide only the label/dot clutter (feature blobs + caves stay pickable)
+    const savedVis=[[markerGroup, markerGroup.visible]];
+    if(expObj) savedVis.push([expObj.group, expObj.group.visible]);
+    if(karst) savedVis.push([karst.group, karst.group.visible]);
+    for(const [o] of savedVis) o.visible=false;
+    savedCam=camera.position.clone(); savedTarget=controls.target.clone();
+    caveFocus={cm, cave, savedMin, savedVis};
+  } else { caveFocus.cm=cm; caveFocus.cave=cave; }
   const viewDir=camera.position.clone().sub(controls.target).normalize();
   const dir=cm.up.clone().multiplyScalar(0.7).add(viewDir.multiplyScalar(0.7)).normalize();
   glideTarget=cm.center.clone();
   glideCam=cm.center.clone().add(dir.multiplyScalar(Math.max(0.09, cm.radius*1.9)));
-  caveFocus={cm, cave, savedMin, savedVis};
   ui.modelCard({ type:'CAVE SURVEY · real data', name:cm.name,
-    desc:'Actual surveyed passages — walls are measured cross-sections (or splay-shot wall points). '+(cave.country||''),
+    desc:'Real surveyed passages — hover another cave (or feature) and click to jump to it. '+(cave.country||''),
     rows:[['depth', cm.depthM!=null?cm.depthM+' m':'—'], ['surveyed', cm.lengthKm!=null?cm.lengthKm+' km':'—']],
     source: cave.source });
 }
@@ -660,10 +670,8 @@ function exitCaveFocus(){
   if(!caveFocus) return;
   caves3d.focus(null);
   controls.minDistance=caveFocus.savedMin;
-  setReliefOpacity();                                        // restore the crust + interior layers
+  setReliefOpacity();                                        // restore the crust + scan slice
   if(scan) scan.setOpacity(dials.scanStrength);
-  if(dataBodies) dataBodies.setOpacity(dials.bodyOpacity);
-  if(structures) structures.setOpacity(dials.featOpacity);
   for(const [o,v] of caveFocus.savedVis) o.visible=v;        // restore markers/dots/pins
   document.body.classList.remove('focusing');
   ui.modelCard(null);
@@ -763,12 +771,12 @@ function animate(){
   // velocity-coupled depth band: narrow & crisp when still/slow, widening with descent speed
   const instV=Math.abs(state.depth-prevDepthForVel)/Math.max(dt,1e-3); prevDepthForVel=state.depth;
   velEMA += (instV-velEMA)*Math.min(1, dt*3.5);
-  const bandKm=BAND_NARROW + (BAND_WIDE-BAND_NARROW)*smooth01(velEMA/BAND_VREF);
-  const bandFrac=bandKm/EARTH_RADIUS;
-  // wire decay is depth-based (fixed scale) so it doesn't flare/thin with scroll speed;
-  // the solid strategies keep the velocity-coupled band
-  if(dataBodies) dataBodies.setBand(clusterParams.strategy==='wire' ? 0.05 : bandFrac);
-  if(ui) ui.bandReadout(`band ≈ ${Math.round(bandKm)} km wide${state.cutaway?'  ·  cutaway':''}`);
+  const narrowKm=BAND_BASE + BAND_PER_KM*Math.max(0,state.depth);   // 2 km at surface, wider with depth
+  const bandKm=narrowKm + (BAND_WIDE-narrowKm)*smooth01(velEMA/BAND_VREF);
+  // wire keeps the crisp depth-coupled band (no speed flare); solids add the speed widening
+  const usedKm=clusterParams.strategy==='wire' ? narrowKm : bandKm;
+  if(dataBodies) dataBodies.setBand(usedKm/EARTH_RADIUS);
+  if(ui) ui.bandReadout(`band ≈ ${Math.round(usedKm)} km wide${state.cutaway?'  ·  cutaway':''}`);
 
   // throttled scan rebuild
   const now=performance.now();

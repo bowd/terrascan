@@ -76,9 +76,9 @@ const WIRE_FRAG=`
     float decay = exp(-max(below,0.0)/max(uBand*1.6,1e-4));
     float up    = smoothstep(-uBand*0.5, 0.0, below);    // hide what's above the current depth
     float w = decay*up;
-    float a = uOpacity*(0.05 + 0.6*w);
+    float a = uOpacity*(0.12 + 0.9*w);
     if(a<0.004) discard;
-    gl_FragColor = vec4(uColor*(0.4+0.6*w), a);
+    gl_FragColor = vec4(uColor*(0.55+0.6*w), a);
   }`;
 
 // ---- points shader: instanced blobs, opacity & size collapse off the band ------
